@@ -1,8 +1,5 @@
 opencv_python==4.4.0.46
 numpy==1.19.2
 astropy==4.2
-zwoasi==0.0.22
-keyboard==0.13.5
 PySimpleGUI==4.38.0
-serfilesreader==0.0.5
-astropy==4.0
+
