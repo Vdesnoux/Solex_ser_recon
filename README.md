@@ -16,7 +16,7 @@ A la fin, 4 images sont affichées - appuyer sur "enter" pour sortir
 Les fichiers suivants sont stockés dans le repertoire du fichier ser
 - xx_mean.fit: image moyenne de toutes les trames de la video ser du spectre
 - xx_img.fit: image brute monochromatique
-- xx_corr.fit: image corrigée des lignes abhérantes
+- xx_corr.fit: image corrigée des lignes aberrantes
 - xx_circle.fit: image circularisée
 - xx_flat.fit: image corrigée du flat
 - xx_recon.fit: image finale, corrigée du slant
