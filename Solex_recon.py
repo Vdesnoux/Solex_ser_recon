@@ -5,7 +5,21 @@ Created on Thu Dec 31 11:42:32 2020
 @author: valerie desnoux
 
 
+------------------------------------------------------------------------
+version du 20 mai
 
+ajout d'un seuil sur profil x pour eviter les taches trop brillantes 
+en image calcium
+seuil=50% du max
+
+ajout d'un ratio_fixe qui n'est pris en compte que si non egal a zero
+
+Version 30 mai 2021
+
+modif seuil dans section flat sur NewImg pour eviter de clamper à background 1000
+mise en commentaire d'un ajout d'une detection des bords du disque solaire et d'un ajustement ce cercle apres
+la circularisation en calculant le rayon a partir de la hauteur du disque
+------------------------------------------------------------------------
 
 -----------------------------------------------------------------------------
 calcul sur une image des ecarts simples entre min de la raie
@@ -24,6 +38,7 @@ import cv2
 import sys
 import math
 from scipy.ndimage import gaussian_filter1d
+#import circle_fit as cf
 
 
 def detect_bord (img, axis, offset):
@@ -54,10 +69,12 @@ def detect_bord (img, axis, offset):
         # Determination des limites de la projection du soleil sur l'axe X
         # Elimine artefact de bords
         xmean=np.mean(img[10:,:-10],0)
-        
         #plt.title('Profil X ')
         #plt.plot(xmean)
         #plt.show()
+        b=np.max(xmean)
+        bb=b*0.5
+        xmean[xmean>bb]=bb
         xmean=gaussian_filter1d(xmean, 11)
         xth=np.gradient(xmean)
         #plt.plot(xth)
@@ -115,9 +132,9 @@ def detect_y_of_x (img, x1,x2):
     yl2_11=np.gradient(yl2_1)
     #plt.plot(yl2_11)
     #plt.show()
-    yl2_11[abs(yl2_11)>20]=1
+    yl2_11[abs(yl2_11)>20]=20
     try:
-        index=np.where (yl2_11==1)
+        index=np.where (yl2_11==20)
         h1=index[0][0]
         h2=index[0][-1]
     except:
@@ -130,22 +147,30 @@ def detect_y_of_x (img, x1,x2):
     
     return y_x1,y_x2
 
-def circularise (img,iw,ih):
+def circularise (img,iw,ih,ratio_fixe):
     y1,y2=detect_bord (img, axis=1,offset=5)    # bords verticaux
     x1,x2=detect_bord (img, axis=0,offset=5)    # bords horizontaux
-    print ('Limites horizontales x1, x2 : ',x1,x2)
+    toprint='Positiox X des limbes droit et gauche x1, x2 : '+str(x1)+' '+str(x2)
+    mylog.append(toprint+'\n')
+    print (toprint)
     TailleX=int(x2-x1)
     if TailleX+10<int(iw/5) or TailleX+10>int(iw*.99):
-        print ('Pas de bord solaire pour determiner la geometrie')
-        print('Reprendre les traitements en manuel avec ISIS')
+        toprint='Pas de limbe solaire pour determiner la geometrie'
+        print(toprint)
+        mylog.append(toprint+'\n')        
+        toprint='Reprendre les traitements en manuel avec ISIS'
+        print(toprint)
+        mylog.append(toprint+'\n')
         #print(TailleX, iw)
         ratio=0.5
         flag_nobords=True
-        #sys.exit()
+        cercle=[0,0,1]
     else:
         y_x1,y_x2=detect_y_of_x(img, x1, x2)
         flag_nobords=False
-        print('Axe y_x1, y_x2',y_x1,y_x2)
+        toprint='Position Y des limbes droit et gauche x1, x2 : '+str(y_x1)+' '+str(y_x2)
+        print(toprint)
+        mylog.append(toprint+'\n')
         # on calcul la coordonnée moyenne du grand axe horizontal 
         ymoy=int((y_x2+y_x1)/2)
         #ymoy=y_x1
@@ -160,18 +185,28 @@ def circularise (img,iw,ih):
         #print ('delta Y: ', deltaY)
         diam_cercle= deltaY*2
       
-        # il faut calculer les ratios du disque dans l'image en y 
-        ratio=diam_cercle/(x2-x1)
-        
+        if ratio_fixe==0:
+            # il faut calculer les ratios du disque dans l'image en y 
+            ratio=diam_cercle/(x2-x1)
+        else:
+            ratio=ratio_fixe
+            
         # paramètre du cercle
         x0= int((x1+((x2-x1)*0.5))*ratio)
         y0=y_x1
         cercle=[x0,y0, diam_cercle]
-        print ('Centre cercle x0,y0 et diamètre :',x0, y0, diam_cercle)
+        toprint='Centre cercle x0,y0 et diamètre :'+str(x0)+' '+str(y0)+' '+str(diam_cercle)
+        print(toprint)
+        mylog.append(toprint+'\n')
         
-    print('Ratio:', ratio)
-    if ratio >=10:
-        print('Rpport hauteur sur largeur supérieur à 10')
+    toprint='Ratio SY/SX :'+"{:.3f}".format(ratio)
+    print(toprint)
+    mylog.append(toprint+'\n')
+    
+    if ratio >=50:
+        toprint='Rapport hauteur sur largeur supérieur à 50 - Exit'
+        print(toprint)
+        mylog.append(toprint+'\n')
         sys.exit()
     #nouvelle taille image en y 
     newiw=int(iw*ratio)
@@ -188,9 +223,61 @@ def circularise (img,iw,ih):
         NewImg.append(ycalc)
     
     return NewImg, newiw, flag_nobords, cercle
+
+def detect_fit_cercle (myimg,y1,y2):
+    edgeX=[]
+    edgeY=[]
+    cercle_edge=[]
+
+    for i in range(y1,y2):
+        li=myimg[i,:-5]
+        li_filter=savgol_filter(li,51,3)
+        li_gr=np.gradient(li_filter)
+        a=np.where((abs(li_gr)>80))
+        s=a[0]
+        if s.size !=0:
+            c_x1=s[0]
+            c_x2=s[-1]
+            edgeX.append(c_x1)
+            edgeY.append(i)
+            edgeX.append(c_x2)
+            edgeY.append(i)
+            cercle_edge.append([c_x1,i])
+            cercle_edge.append([c_x2,i])
+
+        
+    #best fit du cercle centre, radius, rms
+    CercleFit=cf.hyper_fit(cercle_edge)
+    #print (CercleFit)
+    
+    #calcul des x,y cercle
+    cy=CercleFit[1]
+    cx=CercleFit[0]
+    radius= CercleFit[2]
+    cercle=[]
+    for y in range(y1,y2):
+        x=((radius*radius-((y-cy)*(y-cy)))**0.5)
+        xa=cx-x
+        cercle.append([xa,y])
+        xb= cx+x
+        cercle.append([xb,y])
+        
+
+    # plot cercle sur image
+    np_m=np.asarray(cercle_edge)
+    xm,ym=np_m.T
+    np_cercle=np.asarray(cercle)
+    xc, yc = np_cercle.T
+    plt.imshow(myimg)
+    plt.scatter(xm,ym,s=0.1, marker='.', edgecolors=('red'))
+    plt.scatter(xc,yc,s=0.1, marker='.', edgecolors=('green'))
+    
+    plt.show()
+
+    return CercleFit
     
 
-def solex_proc(serfile,shift, flag_display):
+def solex_proc(serfile,shift, flag_display, ratio_fixe):
     """
     ----------------------------------------------------------------------------
     Reconstuit l'image du disque a partir de l'image moyenne des trames et 
@@ -205,7 +292,9 @@ def solex_proc(serfile,shift, flag_display):
     """
     plt.gray()              #palette de gris si utilise matplotlib pour visu debug
     
-   
+    global mylog
+    mylog=[]
+    
     WorkDir=os.path.dirname(serfile)+"/"
     os.chdir(WorkDir)
     base=os.path.basename(serfile)
@@ -221,6 +310,7 @@ def solex_proc(serfile,shift, flag_display):
     Calcul polynome ecart sur une image au centre de la sequence
     ----------------------------------------------------------------------------
     """
+
     
     savefich=basefich+'_mean'
     ImgFile=savefich+'.fit'
@@ -233,7 +323,9 @@ def solex_proc(serfile,shift, flag_display):
     myimg=np.reshape(myspectrum, (ih,iw))
     
     y1,y2=detect_bord(myimg, axis=1, offset=5)
-    print ('Limites verticales y1,y2 : ', y1,y2)
+    toprint='Limites verticales y1,y2 : '+str(y1)+' '+str(y2)
+    print(toprint)
+    mylog.append(toprint+'\n')
     PosRaieHaut=y1
     PosRaieBas=y2
     
@@ -263,14 +355,16 @@ def solex_proc(serfile,shift, flag_display):
     b=p[1]
     c=p[2]
     fit=[]
-    ecart=[]
+    #ecart=[]
     for y in range(0,ih):
         x=a*y**2+b*y+c
         deci=x-int(x)
         fit.append([int(x)-LineRecal,deci,y])
-        ecart.append([x-LineRecal,y])
+        #ecart.append([x-LineRecal,y])
     
-    print('Coef A0,A1,A12', a,b,c)
+    toprint='Coef A0,A1,A12'+str(a)+' '+str(b)+' '+str(c)
+    print(toprint)
+    mylog.append(toprint+'\n')
     
     np_fit=np.asarray(fit)
     xi, xdec,y = np_fit.T
@@ -284,8 +378,8 @@ def solex_proc(serfile,shift, flag_display):
     #plt.show()
 
     #on sauvegarde les params de reconstrution
-    reconfile='recon_'+basefich+'.txt'
-    np.savetxt(reconfile,ecart,fmt='%f',header='fichier recon',footer=str(LineRecal))
+    #reconfile='recon_'+basefich+'.txt'
+    #np.savetxt(reconfile,ecart,fmt='%f',header='fichier recon',footer=str(LineRecal))
     
     
     """
@@ -331,7 +425,14 @@ def solex_proc(serfile,shift, flag_display):
     FrameCount=np.fromfile(serfile, dtype='uint32', count=1,offset=offset)
     FrameCount=FrameCount[0]
     #print('nb de frame :',FrameCount)
-
+    
+    toprint=('width, height : '+str(Width)+' '+str(Height))
+    print(toprint)
+    mylog.append(toprint+'\n')
+    toprint=('Nb frame : '+str(FrameCount))
+    print(toprint)
+    mylog.append(toprint+'\n')
+   
     
     count=Width*Height       # Nombre d'octet d'une trame
     FrameIndex=1             # Index de trame, on evite les deux premieres
@@ -348,7 +449,6 @@ def solex_proc(serfile,shift, flag_display):
     
     #debug
     ok_resize=True
-
 
     
     if flag_display:
@@ -389,7 +489,10 @@ def solex_proc(serfile,shift, flag_display):
             dx=fit[j][0]+shift
             deci=fit[j][1]
             try:
-                IntensiteRaie[j]=(img[j,LineRecal+dx] *(1-deci)+deci*img[j,LineRecal+dx+1])*1.5
+                IntensiteRaie[j]=(img[j,LineRecal+dx] *(1-deci)+deci*img[j,LineRecal+dx+1])
+                if img[j,LineRecal+dx]>=65000:
+                    IntensiteRaie[j]=64000
+                    #print ('intensite : ', img[j,LineRecal+dx])
             except:
                 IntensiteRaie[j]=IntensiteRaie[j-1]
 
@@ -471,25 +574,6 @@ def solex_proc(serfile,shift, flag_display):
         m=img[c-7:c+6,]
         s=np.median(m,0)
         img[c-1:c,]=s
-   
-    """
-    # correction de lignes
-    for i in range(0,len(listcol)-1):
-        c=listcol[i]
-        if c<=y2-15 and c>=y1+15:
-            j=i
-            it=1
-            while (listcol[j+1]-listcol[i])==it and j<len(listcol)-2:
-                j=j+1
-                it=it+1
-                i=i+1
-                img[listcol[i]-1:listcol[i],]=img[c-2:c-1,]
-                #img[listcol[i]-1:listcol[i],]=0
-            if it==1:
-                m=img[c-3:c+1,]
-                s=np.median(m,0)
-                img[c-1:c,]=s
-     """  
     
     #sauvegarde le fits
     DiskHDU=fits.PrimaryHDU(img,header=hdu.header)
@@ -502,7 +586,9 @@ def solex_proc(serfile,shift, flag_display):
     sinon on applique un facteur x=0.5
     ------------------------------------------------------------
     """
-    NewImg, newiw, flag_nobords, cercle =circularise(img,iw,ih)
+    
+    NewImg, newiw, flag_nobords, cercle =circularise(img,iw,ih,ratio_fixe)
+    
     # sauve l'image circularisée
     frame=np.array(NewImg, dtype='uint16')
     hdu.header['NAXIS1']=newiw
@@ -510,6 +596,13 @@ def solex_proc(serfile,shift, flag_display):
     DiskHDU.writeto(basefich+'_circle.fit',overwrite='True')
     
     """
+    on fit un cercle !!!
+   
+    
+    CercleFit=detect_fit_cercle (frame,y1,y2)
+    print(CercleFit)
+    
+   
     --------------------------------------------------------------
     on echaine avec la correction de transversallium
     --------------------------------------------------------------
@@ -622,19 +715,19 @@ def solex_proc(serfile,shift, flag_display):
    
     """
     -----------------------------------------------------------------------
-    correction de distorsion tilt disque
+    correction de distorsion slant disque
     -----------------------------------------------------------------------
     """
     img=frame
     if flag_nobords==False:
-        # correction de tilt uniquement si on voit les bords droit/gauche
+        # correction de slant uniquement si on voit les limbes droit/gauche
         # trouve les coordonnées y des bords du disque dont on a les x1 et x2 
         # pour avoir les coordonnées y du grand axe horizontal
         # on cherche la projection de la taille max du soleil en Y et en X
         x1,x2=detect_bord(frame, axis=0,offset=0)
         y_x1,y_x2=detect_y_of_x(img, x1, x2)
         BackGround=1000
-    
+        
         # test que le grand axe de l'ellipse est horizontal
         if abs(y_x1-y_x2)> 5 :
             #calcul l'angle et fait une interpolation de slant
@@ -643,7 +736,9 @@ def solex_proc(serfile,shift, flag_display):
             TanAlpha=(-dy/dx)
             AlphaRad=math.atan(TanAlpha)
             AlphaDeg=math.degrees(AlphaRad)
-            print('Angle slant: ',AlphaDeg)
+            toprint='Angle slant: '+"{:+.2f}".format(AlphaDeg)
+            print(toprint)
+            mylog.append(toprint+'\n')
             
             #decale lignes images par rapport a x1
             colref=x1
@@ -658,25 +753,27 @@ def solex_proc(serfile,shift, flag_display):
                 #x et y sont les valeurs de la ligne originale avant decalge
                 for j in range(0, len(y)):
                     ycalc.append(y[j]+dy)
-                f=interp1d(ycalc,x,kind='linear',fill_value=(BackGround, BackGround),bounds_error=False)
+                f=interp1d(ycalc,x,kind='linear',fill_value=(BackGround,BackGround),bounds_error=False)
                 xcalc=f(y)
                 NewLine=xcalc
                 NewImg[:,i]=NewLine
-            NewImg[NewImg<=BackGround]=BackGround
+            NewImg[NewImg<=0]=0  #modif du 19/05/2021 etait a 1000
             img=NewImg
-   
+        
     # refait un calcul de mise a l'echelle
-    # le tilt peut avoir legerement modifié la forme
-    # mais en fait pas vraiment...
-    # img, newiw=circularise(img,newiw, ih)
+    # le slant peut avoir legerement modifié la forme
+    # mais en fait pas vraiment... donc on met en commentaire
+    # img, newiw=circularise(img,newiw, ih,ratio_fixe)
     
     # sauvegarde en fits de l'image finale
     frame=np.array(img, dtype='uint16')
     DiskHDU=fits.PrimaryHDU(frame,header=hdu.header)
     DiskHDU.writeto(basefich+'_recon.fit', overwrite='True')
     
-    return frame, hdu.header, cercle
+    with  open(basefich+'.txt', "w") as logfile:
+        logfile.writelines(mylog)
     
+    return frame, hdu.header, cercle
     
 
 
@@ -687,7 +784,8 @@ if __name__ == "__main__":
     basefich='C:/Data astro/2021-01 Christian/12_18_19.ser'
     shift=0
     flag_display=False
-    frame, header, cercle=solex_proc(basefich,shift,flag_display)
+    ratio_fixe=0
+    frame, header, cercle=solex_proc(basefich,shift,flag_display,ratio_fixe)
     
     base=os.path.basename(basefich)
     basefich=os.path.splitext(base)[0]

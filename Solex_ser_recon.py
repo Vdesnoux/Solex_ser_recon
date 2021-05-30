@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 """
 Created on Fri Dec 25 16:38:55 2020
+Version 20 mai 2021
 
 @author: valerie
 
 Front end de traitements spectro helio de fichier ser
 - interface pour selectionner un ou plusieurs fichiers
 - appel au module solex_recon qui traite la sequence et genere les fichiers fits
-- propose avec openCV un affichage de l'image resultat
+- propose avec openCV un affichage de l'image resultat ou pas
+- decalage en longueur d'onde avec Shift
+- ajout d'une zone pour entrer un ratio fixe. Si resteà zero alors il sera calculé
+automatiquement
+- ajout de sauvegarde png _protus avec flag disk_display en dur
 
 """
 import numpy as np
@@ -18,6 +23,7 @@ import Solex_recon as sol
 from astropy.io import fits
 
 #import time
+
 import PySimpleGUI as sg
 
 def UI_SerBrowse (WorkDir):
@@ -33,15 +39,18 @@ def UI_SerBrowse (WorkDir):
         liste des fichiers selectionnés, avec leur extension et le chemin complet
     Shift : Type string
         Ecart en pixel demandé pour reconstruire le disque 
-        sur une longeur d'onde en relatif par rapport au centre de la raie    
+        sur une longeur d'onde en relatif par rapport au centre de la raie  
+    ratio_fixe : ratio Y/X en fixe, si egal à zéro alors calcul automatique
+    flag_isplay: affiche ou non la construction du disque en temps réel
     """
     sg.theme('Dark2')
     sg.theme_button_color(('white', '#500000'))
     
     layout = [
-    [sg.Text('Nom du fichier', size=(15, 1)), sg.InputText(default_text='',size=(40,1),key='-FILE-'),
+    [sg.Text('Nom du fichier', size=(15, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
     [sg.Checkbox('Affiche reconstruction', default=False, key='-DISP-')],
+    [sg.Text('Ratio X/Y fixe ', size=(15,1)), sg.Input(default_text='0', size=(8,1),key='-RATIO-')],
     [sg.Text('Decalage pixel',size=(15,1)),sg.Input(default_text='0',size=(8,1),key='-DX-',enable_events=True)],  
     [sg.Button('Ok'), sg.Cancel()]
     ] 
@@ -63,38 +72,70 @@ def UI_SerBrowse (WorkDir):
     FileNames=values['-FILE-']
     Shift=values['-DX-']
     flag_display=values['-DISP-']
+    ratio_fixe=float(values['-RATIO-'])
     
-    return FileNames, Shift, flag_display
+    return FileNames, Shift, flag_display, ratio_fixe
 
+"""
+-------------------------------------------------------------------------------------------
+le programme commence ici !
+
+Si version windows
 # recupere les parametres utilisateurs enregistrés lors de la session
 # precedente dans un fichier txt "pysolex.ini" qui va etre placé ici en dur
 # dans repertoire c:/py/ pour l'instant
 
-try:
-    with open('c:/py/pysolex.ini', "r") as f1:
+Si version mac
+#recupere les noms de fichiers par un input console
+#valeurs de flag_display, Shift et ratio_fixe sont en dur dans le programme
+
+--------------------------------------------------------------------------------------------
+"""
+version_mac =False
+disk_display=False
+
+if not(version_mac):
+    try:
+        with open('c:/py/pysolex.ini', "r") as f1:
         
-        param_init = f1.readlines()
-        WorkDir=param_init[0]
-except:
-    pass
+            param_init = f1.readlines()
+            WorkDir=param_init[0]
+    except:
+        WorkDir=''
 
-# Recupere paramatres de la boite de dialogue
-#
-# serfiles: liste des noms de fichier ser avec repertoire et extension
-# shift: ecart en pixel par rapport au centre de la raie
-
-serfiles, Shift, flag_display=UI_SerBrowse(WorkDir)
-serfiles=serfiles.split(';')
+    # Recupere paramatres de la boite de dialogue
+    serfiles, Shift, flag_display, ratio_fixe=UI_SerBrowse(WorkDir)
+    serfiles=serfiles.split(';')
+    
+else:
+    WorkDir='/Users/macbuil/ocuments/pyser/'
+    serfiles=[]
+    print('nom du fichier sans extension, ou des fichiers sans extension séparés par une virgule')
+    basefichs=input('nom(s): ')
+    basefichs=basefichs.split(',')
+    for b in basefichs:
+        serfiles.append(WorkDir+b.strip()+'.ser')
+    # parametres en dur
+    flag_display=False
+    ratio_fixe=0
+    Shift=0
+    
+    sys.exit()
+    
+#code commun mac ou windows
+#************************************************************************************************
 
 #pour gerer la tempo des affichages des images resultats dans cv2.waitKey
+#sit plusieurs fichiers à traiter
 if len(serfiles)==1:
-    tempo=0
+    tempo=4000
 else:
     tempo=1
+    
 # boucle sur la liste des fichers
 for serfile in serfiles:
     print (serfile)
-    
+
     if serfile=='':
         sys.exit()
     
@@ -102,6 +143,9 @@ for serfile in serfiles:
     os.chdir(WorkDir)
     base=os.path.basename(serfile)
     basefich=os.path.splitext(base)[0]
+    if base=='':
+        print('erreur nom de fichier : ',serfile)
+        sys.exit()
     
     # met a jour le repertoire si on a changé dans le fichier ini
     try:
@@ -132,13 +176,14 @@ for serfile in serfiles:
     
     Width=np.fromfile(serfile, dtype='uint32', count=1,offset=offset)
     Width=Width[0]
-    print('Width :', Width)
+    #print('Width :', Width)
     offset=offset+4
     
     Height=np.fromfile(serfile, dtype='uint32', count=1,offset=offset)
     Height=Height[0]
-    print('Height :',Height)
+    #print('Height :',Height)
     offset=offset+4
+
     
     PixelDepthPerPlane=np.fromfile(serfile, dtype='uint32', count=1,offset=offset)
     PixelDepthPerPlane=PixelDepthPerPlane[0]
@@ -146,23 +191,20 @@ for serfile in serfiles:
     
     FrameCount=np.fromfile(serfile, dtype='uint32', count=1,offset=offset)
     FrameCount=FrameCount[0]
-    print('Nb de frame :',FrameCount)
     offset=offset+4
     
     b=np.fromfile(serfile, dtype='int8',count=40,offset=offset)
     Observer=b.tobytes().decode()
-    print ('Observer :',Observer)
     offset=offset+40
+
     
     b=np.fromfile(serfile, dtype='int8',count=40,offset=offset)
     Instrument=b.tobytes().decode()
-    print ('Instrument :',Instrument)
+    #print ('Instrument :',Instrument)
     offset=offset+40
     
     b=np.fromfile(serfile, dtype='int8',count=40,offset=offset)
     Telescope=b.tobytes().decode()
-    print ('Telescope :', Telescope)
-    print(' ')
     offset=offset+40
     
     DTime=np.fromfile(serfile, dtype='int64', count=1,offset=offset)
@@ -250,6 +292,8 @@ for serfile in serfiles:
     #t1=float(time.time())
     #print('image mean saved',t1-t0)
     
+    
+    
     #affiche image moyenne
     cv2.namedWindow('Ser', cv2.WINDOW_NORMAL)
     cv2.resizeWindow('Ser', AxeX, AxeY)
@@ -270,13 +314,15 @@ for serfile in serfiles:
     except:
         Shift=0
     
-    frame, header, cercle=sol.solex_proc(serfile,Shift,flag_display)
+    frame, header, cercle=sol.solex_proc(serfile,Shift,flag_display,ratio_fixe)
     
     base=os.path.basename(serfile)
     basefich=os.path.splitext(base)[0]
    
+    
     ih=frame.shape[0]
     newiw=frame.shape[1]
+    
     
     
     # gere reduction image png
@@ -284,10 +330,13 @@ for serfile in serfiles:
         sc=0.5
         
     # gere reduction image png
-    if ih>2000:
-        sc=0.3
-
+    if ih>1900:
+        sc=0.4
         
+    # gere reduction image png
+    if ih>2500:
+        sc=0.2
+           
     cv2.namedWindow('sun0', cv2.WINDOW_NORMAL)
     cv2.moveWindow('sun0', -10, 0)
     cv2.resizeWindow('sun0', (int(newiw*sc), int(ih*sc)))
@@ -302,9 +351,10 @@ for serfile in serfiles:
     cv2.moveWindow('sun2', 200, 0)
     cv2.resizeWindow('sun2', (int(newiw*sc), int(ih*sc)))
     
-    cv2.namedWindow('sun3', cv2.WINDOW_NORMAL)
-    cv2.moveWindow('sun3', 400, 0)
-    cv2.resizeWindow('sun3', (int(newiw*sc), int(ih*sc)))
+    if ratio_fixe==0:
+        cv2.namedWindow('sun3', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('sun3', 400, 0)
+        cv2.resizeWindow('sun3', (int(newiw*sc), int(ih*sc)))
 
     cv2.namedWindow('clahe', cv2.WINDOW_NORMAL)
     cv2.moveWindow('clahe', 600, 0)
@@ -315,10 +365,10 @@ for serfile in serfiles:
     clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
     cl1 = clahe.apply(frame)
     
-    
+    #image leger seuils
     frame1=np.copy(frame)
-    Seuil_bas=np.percentile(frame1, 25)
-    Seuil_haut=np.max(frame1)
+    Seuil_bas=np.percentile(frame, 25)
+    Seuil_haut=np.percentile(frame,99.9999)
     frame1[frame1>Seuil_haut]=65000
     #print('seuil bas', Seuil_bas)
     #print('seuil haut', Seuil_haut)
@@ -328,9 +378,10 @@ for serfile in serfiles:
     cv2.imshow('sun',frame_contrasted)
     #cv2.waitKey(0)
     
+    #image seuils serres 
     frame1=np.copy(frame)
-    Seuil_haut=np.max(frame1)
-    Seuil_bas=(Seuil_haut*0.5)
+    Seuil_haut=np.percentile(frame1,99.9999)
+    Seuil_bas=(Seuil_haut*0.25)
     #print('seuil bas HC', Seuil_bas)
     #print('seuil haut HC', Seuil_haut)
     frame1[frame1>Seuil_haut]=65000
@@ -340,25 +391,26 @@ for serfile in serfiles:
     cv2.imshow('sun2',frame_contrasted2)
     #cv2.waitKey(0)
     
+    #image seuils protus
     frame1=np.copy(frame)
-    Seuil_haut=np.max(frame1)*0.6
+    Seuil_haut=np.percentile(frame1,99.9999)*0.18
     Seuil_bas=0
-    
-    #print('seuil bas protu', Seuil_bas)
-    #print('seuil haut protu', Seuil_haut)
-    frame1[frame1>Seuil_haut]=65000
+    print('seuil bas protu', Seuil_bas)
+    print('seuil haut protu', Seuil_haut)
+    frame1[frame1>Seuil_haut]=Seuil_haut
     fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
     fc2[fc2<0]=0
-    x0=cercle[0]
-    y0=cercle[1]-1
-    r=int(cercle[2]*0.5)+1
     frame_contrasted3=np.array(fc2, dtype='uint16')
-    frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1)
+    if ratio_fixe==0 and disk_display==True:
+        x0=cercle[0]
+        y0=cercle[1]-1
+        r=int(cercle[2]*0.5)+1
+        frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1)
     cv2.imshow('sun3',frame_contrasted3)
     #cv2.waitKey(0)
     
     Seuil_bas=np.percentile(cl1, 25)
-    Seuil_haut=np.max(cl1)*1.05
+    Seuil_haut=np.percentile(cl1,99.9999)*1.05
     cc=(cl1-Seuil_bas)*(65000/(Seuil_haut-Seuil_bas))
     cc[cc<0]=0
     cc=np.array(cc, dtype='uint16')
@@ -369,6 +421,8 @@ for serfile in serfiles:
     cv2.imwrite(basefich+'_disk.png',frame_contrasted)
     #sauvegarde en png pour appliquer une colormap par autre script
     cv2.imwrite(basefich+'_diskHC.png',frame_contrasted2)
+    #sauvegarde en png pour appliquer une colormap par autre script
+    cv2.imwrite(basefich+'_protus.png',frame_contrasted3)
     #sauvegarde en png de clahe
     cv2.imwrite(basefich+'_clahe.png',cc)
     
@@ -393,8 +447,9 @@ for serfile in serfiles:
     """
     
     #sauvegarde le fits
-    frame=np.array(cl1, dtype='uint16')
-    DiskHDU=fits.PrimaryHDU(frame,header)
+    frame2=np.copy(frame)
+    frame2=np.array(cl1, dtype='uint16')
+    DiskHDU=fits.PrimaryHDU(frame2,header)
     DiskHDU.writeto(basefich+'_clahe.fit', overwrite='True')
 
     cv2.destroyAllWindows()
