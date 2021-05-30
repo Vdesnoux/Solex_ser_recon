@@ -313,7 +313,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
 
     
     savefich=basefich+'_mean'
-    ImgFile=savefich+'.fit'
+    ImgFile=savefich+'.fits'
     #ouvre image _mean qui la moyenne de toutes les trames spectrales du fichier ser
     hdulist = fits.open(ImgFile)
     hdu=hdulist[0]
@@ -520,7 +520,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
     #sauve fichier disque reconstruit 
     hdu.header['NAXIS1']=FrameCount-1
     DiskHDU=fits.PrimaryHDU(Disk,header=hdu.header)
-    DiskHDU.writeto(basefich+'_img.fit',overwrite='True')
+    DiskHDU.writeto(basefich+'_img.fits',overwrite='True')
     
     if flag_display:
         cv2.destroyAllWindows()
@@ -577,7 +577,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
     
     #sauvegarde le fits
     DiskHDU=fits.PrimaryHDU(img,header=hdu.header)
-    DiskHDU.writeto(basefich+'_corr.fit', overwrite='True')
+    DiskHDU.writeto(basefich+'_corr.fits', overwrite='True')
      
     
     """
@@ -593,7 +593,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
     frame=np.array(NewImg, dtype='uint16')
     hdu.header['NAXIS1']=newiw
     DiskHDU=fits.PrimaryHDU(frame,header=hdu.header)
-    DiskHDU.writeto(basefich+'_circle.fit',overwrite='True')
+    DiskHDU.writeto(basefich+'_circle.fits',overwrite='True')
     
     """
     on fit un cercle !!!
@@ -711,7 +711,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
     frame=np.array(BelleImage, dtype='uint16')
     # sauvegarde de l'image deflattée
     DiskHDU=fits.PrimaryHDU(frame,header=hdu.header)
-    DiskHDU.writeto(basefich+'_flat.fit',overwrite='True')
+    DiskHDU.writeto(basefich+'_flat.fits',overwrite='True')
    
     """
     -----------------------------------------------------------------------
@@ -768,7 +768,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
     # sauvegarde en fits de l'image finale
     frame=np.array(img, dtype='uint16')
     DiskHDU=fits.PrimaryHDU(frame,header=hdu.header)
-    DiskHDU.writeto(basefich+'_recon.fit', overwrite='True')
+    DiskHDU.writeto(basefich+'_recon.fits', overwrite='True')
     
     with  open(basefich+'.txt', "w") as logfile:
         logfile.writelines(mylog)
@@ -861,7 +861,7 @@ if __name__ == "__main__":
     #sauvegarde le fits
     frame=np.array(cl1, dtype='uint16')
     DiskHDU=fits.PrimaryHDU(frame,header)
-    DiskHDU.writeto(basefich+'_clahe.fit', overwrite='True')
+    DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
 
     cv2.destroyAllWindows()
 
