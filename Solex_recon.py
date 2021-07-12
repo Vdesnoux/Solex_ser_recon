@@ -148,13 +148,14 @@ def detect_y_of_x (img, x1,x2):
     return y_x1,y_x2
 
 def circularise (img,iw,ih,ratio_fixe):
+    print('in circularise')
     y1,y2=detect_bord (img, axis=1,offset=5)    # bords verticaux
     x1,x2=detect_bord (img, axis=0,offset=5)    # bords horizontaux
     toprint='Positiox X des limbes droit et gauche x1, x2 : '+str(x1)+' '+str(x2)
     mylog.append(toprint+'\n')
     print (toprint)
     TailleX=int(x2-x1)
-    if TailleX+10<int(iw/5) or TailleX+10>int(iw*.99):
+    if (TailleX+10<int(iw/5) or TailleX+10>int(iw*.99)) and ratio_fixe==0:
         toprint='Pas de limbe solaire pour determiner la geometrie'
         print(toprint)
         mylog.append(toprint+'\n')        
@@ -302,7 +303,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
     
     #affiche ou pas l'image du disque qui se contruit en temps reel
     #gain de temps si affiche pas, mis en dur dans le script
-    #print(flag_display)
+    print('flag=', flag_display)
     #flag_display=False
   
     """
@@ -505,7 +506,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
             Disk=Disk[1:,FrameIndex:]
             #Disp=Disk
         if flag_display and FrameIndex %5 ==0:
-            cv2.imshow ('disk', Disk)
+            cv2.imshow ('disk testeststest', Disk)
             if cv2.waitKey(1) == 27:                     # exit if Escape is hit
                      cv2.destroyAllWindows()    
                      sys.exit()
@@ -719,7 +720,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
     -----------------------------------------------------------------------
     """
     img=frame
-    if flag_nobords==False:
+    if flag_nobords==False and ratio_fixe==0:
         # correction de slant uniquement si on voit les limbes droit/gauche
         # trouve les coordonnées y des bords du disque dont on a les x1 et x2 
         # pour avoir les coordonnées y du grand axe horizontal
@@ -770,7 +771,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe):
     DiskHDU=fits.PrimaryHDU(frame,header=hdu.header)
     DiskHDU.writeto(basefich+'_recon.fit', overwrite='True')
     
-    with  open(basefich+'.txt', "w") as logfile:
+    with  open(basefich+'_log.txt', "w") as logfile:
         logfile.writelines(mylog)
     
     return frame, hdu.header, cercle

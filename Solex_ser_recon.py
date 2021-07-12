@@ -47,11 +47,11 @@ def UI_SerBrowse (WorkDir):
     sg.theme_button_color(('white', '#500000'))
     
     layout = [
-    [sg.Text('Nom du fichier', size=(15, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
+    [sg.Text('File name', size=(15, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
-    [sg.Checkbox('Affiche reconstruction', default=False, key='-DISP-')],
-    [sg.Text('Ratio X/Y fixe ', size=(15,1)), sg.Input(default_text='0', size=(8,1),key='-RATIO-')],
-    [sg.Text('Decalage pixel',size=(15,1)),sg.Input(default_text='0',size=(8,1),key='-DX-',enable_events=True)],  
+    [sg.Checkbox('show images', default=False, key='-DISP-')],
+    [sg.Text('X/Y ratio correction \n (blank for auto)', size=(15,1)), sg.Input(default_text='1', size=(8,1),key='-RATIO-')],
+    [sg.Text('Pixel offset',size=(15,1)),sg.Input(default_text='0',size=(8,1),key='-DX-',enable_events=True)],  
     [sg.Button('Ok'), sg.Cancel()]
     ] 
     
@@ -72,7 +72,10 @@ def UI_SerBrowse (WorkDir):
     FileNames=values['-FILE-']
     Shift=values['-DX-']
     flag_display=values['-DISP-']
-    ratio_fixe=float(values['-RATIO-'])
+    if values['-RATIO-'] == '':
+        ratio_fixe = 0
+    else:
+        ratio_fixe=float(values['-RATIO-'])
     
     return FileNames, Shift, flag_display, ratio_fixe
 
@@ -295,10 +298,11 @@ for serfile in serfiles:
     
     
     #affiche image moyenne
-    cv2.namedWindow('Ser', cv2.WINDOW_NORMAL)
-    cv2.resizeWindow('Ser', AxeX, AxeY)
-    cv2.moveWindow('Ser', 100, 0)
-    cv2.imshow ('Ser', myimg)
+    if flag_display:
+        cv2.namedWindow('Ser', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('Ser', AxeX, AxeY)
+        cv2.moveWindow('Ser', 100, 0)
+        cv2.imshow ('Ser', myimg)
     if cv2.waitKey(2000) == 27:                     # exit if Escape is hit
            cv2.destroyAllWindows()
            sys.exit()
@@ -336,29 +340,31 @@ for serfile in serfiles:
     # gere reduction image png
     if ih>2500:
         sc=0.2
-           
-    cv2.namedWindow('sun0', cv2.WINDOW_NORMAL)
-    cv2.moveWindow('sun0', -10, 0)
-    cv2.resizeWindow('sun0', (int(newiw*sc), int(ih*sc)))
-    cv2.imshow('sun0',frame)
-    
-    
-    cv2.namedWindow('sun', cv2.WINDOW_NORMAL)
-    cv2.moveWindow('sun', 0, 0)
-    cv2.resizeWindow('sun', (int(newiw*sc), int(ih*sc)))
-    
-    cv2.namedWindow('sun2', cv2.WINDOW_NORMAL)
-    cv2.moveWindow('sun2', 200, 0)
-    cv2.resizeWindow('sun2', (int(newiw*sc), int(ih*sc)))
-    
-    if ratio_fixe==0:
-        cv2.namedWindow('sun3', cv2.WINDOW_NORMAL)
-        cv2.moveWindow('sun3', 400, 0)
-        cv2.resizeWindow('sun3', (int(newiw*sc), int(ih*sc)))
 
-    cv2.namedWindow('clahe', cv2.WINDOW_NORMAL)
-    cv2.moveWindow('clahe', 600, 0)
-    cv2.resizeWindow('clahe',(int(newiw*sc), int(ih*sc)))
+    flag_result_show = flag_display
+    if flag_result_show:       
+        cv2.namedWindow('sun0', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('sun0', -10, 0)
+        cv2.resizeWindow('sun0', (int(newiw*sc), int(ih*sc)))
+        cv2.imshow('sun0',frame)
+        
+        
+        cv2.namedWindow('sun', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('sun', 0, 0)
+        cv2.resizeWindow('sun', (int(newiw*sc), int(ih*sc)))
+        
+        cv2.namedWindow('sun2', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('sun2', 200, 0)
+        cv2.resizeWindow('sun2', (int(newiw*sc), int(ih*sc)))
+        
+        if ratio_fixe==0:
+            cv2.namedWindow('sun3', cv2.WINDOW_NORMAL)
+            cv2.moveWindow('sun3', 400, 0)
+            cv2.resizeWindow('sun3', (int(newiw*sc), int(ih*sc)))
+
+        cv2.namedWindow('clahe', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('clahe', 600, 0)
+        cv2.resizeWindow('clahe',(int(newiw*sc), int(ih*sc)))
     
     # create a CLAHE object (Arguments are optional)
     #clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(5,5))
@@ -375,7 +381,10 @@ for serfile in serfiles:
     fc=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
     fc[fc<0]=0
     frame_contrasted=np.array(fc, dtype='uint16')
-    cv2.imshow('sun',frame_contrasted)
+
+
+    if flag_result_show:
+        cv2.imshow('sun',frame_contrasted)
     #cv2.waitKey(0)
     
     #image seuils serres 
@@ -388,7 +397,8 @@ for serfile in serfiles:
     fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
     fc2[fc2<0]=0
     frame_contrasted2=np.array(fc2, dtype='uint16')
-    cv2.imshow('sun2',frame_contrasted2)
+    if flag_result_show:
+        cv2.imshow('sun2',frame_contrasted2)
     #cv2.waitKey(0)
     
     #image seuils protus
@@ -406,7 +416,8 @@ for serfile in serfiles:
         y0=cercle[1]-1
         r=int(cercle[2]*0.5)+1
         frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1)
-    cv2.imshow('sun3',frame_contrasted3)
+    if flag_result_show:
+        cv2.imshow('sun3',frame_contrasted3)
     #cv2.waitKey(0)
     
     Seuil_bas=np.percentile(cl1, 25)
@@ -414,7 +425,8 @@ for serfile in serfiles:
     cc=(cl1-Seuil_bas)*(65000/(Seuil_haut-Seuil_bas))
     cc[cc<0]=0
     cc=np.array(cc, dtype='uint16')
-    cv2.imshow('clahe',cc)
+    if flag_result_show:
+        cv2.imshow('clahe',cc)
     cv2.waitKey(tempo)  #affiche 15s et continue
 
     #sauvegarde en png pour appliquer une colormap par autre script
