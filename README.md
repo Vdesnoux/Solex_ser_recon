@@ -1,23 +1,20 @@
-# Solex_ser_recon
-Reonstruction disque solaire à partir de fichiers ser spectroheliographie
+Solar disk reconstruction from spectroheliography SER files
 
-Fichier de lancement: Solex_ser_recon
-Appel le module ser_recon
+Usage: Launch SHG_MAIN (double click)
 
-Dans le fenetre de pysimpleGUI entrer le nom du fichier ser à traiter
-Cocher la case "display" pour un affichage de la reconstruction en live
-Shift: decalage en pixels par rapport au minimum de la raie pour reconstruire sur une autre longueur d'onde
-exemple: decalage de n pixels pour reconstruire le continuum
+In the pysimpleGUI window enter the name of the file to be processed
+Check the "display" box for a live reconstruction display
+Shift: offset in pixels from the minimum of the line to reconstruct on another wavelength
+Y/X ratio: enter a specific Y/X ratio, or leave blank for auto-correction
+Slant: enter a specific slant angle in degrees, or leave blank for auto-correction
 
-Si affichage live, à la fin de la reconstruction appuyer sur "enter" pour coninuer les traitements
+If "save .fit" is checked, the following files are stored in the directory of the SER file:
 
-A la fin, 4 images sont affichées - appuyer sur "enter" pour sortir
+- xx_mean.fit: average image of all the frames of the SER video of the spectral line
+- xx_img.fit: monochromatic raw image
+- xx_corr.fit: image corrected for outliers
+- xx_circle.fit: circularized image
+- xx_flat.fit: corrected image of the flat
+- xx_recon.fit: final image, corrected for slant
 
-Les fichiers suivants sont stockés dans le repertoire du fichier ser
-- xx_mean.fit: image moyenne de toutes les trames de la video ser du spectre
-- xx_img.fit: image brute monochromatique
-- xx_corr.fit: image corrigée des lignes aberrantes
-- xx_circle.fit: image circularisée
-- xx_flat.fit: image corrigée du flat
-- xx_recon.fit: image finale, corrigée du slant
-
+If "Save CLAHE image only" is ticked then only the final image will be saved
