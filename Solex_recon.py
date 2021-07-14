@@ -386,10 +386,8 @@ def solex_proc(serfile, options):
                 y=np.arange(0,ih)
                 dy=(i-colref)*TanAlpha
                 #print (dy)
-                ycalc=[]
                 #x et y sont les valeurs de la ligne originale avant decalge
-                for j in range(0, len(y)):
-                    ycalc.append(y[j]+dy)
+                ycalc = y + np.ones(ih)*dy
                 f=interp1d(ycalc,x,kind='linear',fill_value=(BackGround,BackGround),bounds_error=False)
                 xcalc=f(y)
                 NewLine=xcalc
