@@ -55,8 +55,8 @@ def UI_SerBrowse (WorkDir):
     [sg.Checkbox('Save .fit files', default=False, key='-FIT-')],
     [sg.Checkbox('Save CLAHE image only', default=False, key='-CLAHE_ONLY-')],
     [sg.Text('X/Y ratio (blank for auto)', size=(20,1)), sg.Input(default_text='', size=(8,1),key='-RATIO-')],
-    [sg.Text('Pixel offset',size=(20,1)),sg.Input(default_text='0',size=(8,1),key='-DX-',enable_events=True)],
     [sg.Text('Slant angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],
+    [sg.Text('Pixel offset',size=(20,1)),sg.Input(default_text='0',size=(8,1),key='-DX-',enable_events=True)],
     [sg.Button('OK'), sg.Cancel()]
     ] 
     
