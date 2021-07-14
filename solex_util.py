@@ -1,3 +1,9 @@
+"""
+@author: valerie desnoux
+with improvements by Andrew Smith
+
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
@@ -11,6 +17,14 @@ import math
 from scipy.ndimage import gaussian_filter1d
 #import circle_fit as cf
 
+mylog=[]
+
+def clearlog():
+    mylog.clear()
+
+def logme(s):
+    print(s)
+    mylog.append(s+'\n')
 
 def detect_bord (img, axis, offset):
     #axis donne la direction de detection des bords si 1 vertical, ou 0 horiz
@@ -118,31 +132,21 @@ def detect_y_of_x (img, x1,x2):
     
     return y_x1,y_x2
 
-def circularise (img,iw,ih,ratio_fixe):
-    print('in circularise')
+def circularise (img,iw,ih,options):
     y1,y2=detect_bord (img, axis=1,offset=5)    # bords verticaux
     x1,x2=detect_bord (img, axis=0,offset=5)    # bords horizontaux
-    toprint='Positiox X des limbes droit et gauche x1, x2 : '+str(x1)+' '+str(x2)
-    mylog.append(toprint+'\n')
-    print (toprint)
+    logme('X-position of left and right solar limb, x1, x2 : '+str(x1)+' '+str(x2))
     TailleX=int(x2-x1)
-    if (TailleX+10<int(iw/5) or TailleX+10>int(iw*.99)) and ratio_fixe==0:
-        toprint='Pas de limbe solaire pour determiner la geometrie'
-        print(toprint)
-        mylog.append(toprint+'\n')        
-        toprint='Reprendre les traitements en manuel avec ISIS'
-        print(toprint)
-        mylog.append(toprint+'\n')
-        #print(TailleX, iw)
-        ratio=0.5
+    if (TailleX+10<int(iw/5) or TailleX+10>int(iw*.99)) and ('ratio_fixe' not in options):
+        logme('Can\'t find solar limbs to auto-correct geometry')
+        logme('Perform a manual geometric correction')
+        ratio=1.0
         flag_nobords=True
         cercle=[0,0,1]
     else:
         y_x1,y_x2=detect_y_of_x(img, x1, x2)
         flag_nobords=False
-        toprint='Position Y des limbes droit et gauche x1, x2 : '+str(y_x1)+' '+str(y_x2)
-        print(toprint)
-        mylog.append(toprint+'\n')
+        logme('Y-position of top and bottom solar limb, y1, y2 : '+str(y_x1)+' '+str(y_x2))
         # on calcul la coordonnée moyenne du grand axe horizontal 
         ymoy=int((y_x2+y_x1)/2)
         #ymoy=y_x1
@@ -157,28 +161,22 @@ def circularise (img,iw,ih,ratio_fixe):
         #print ('delta Y: ', deltaY)
         diam_cercle= deltaY*2
       
-        if ratio_fixe==0:
+        if not 'ratio_fixe' in options:
             # il faut calculer les ratios du disque dans l'image en y 
             ratio=diam_cercle/(x2-x1)
         else:
-            ratio=ratio_fixe
+            ratio=options['ratio_fixe']
             
         # paramètre du cercle
         x0= int((x1+((x2-x1)*0.5))*ratio)
         y0=y_x1
         cercle=[x0,y0, diam_cercle]
-        toprint='Centre cercle x0,y0 et diamètre :'+str(x0)+' '+str(y0)+' '+str(diam_cercle)
-        print(toprint)
-        mylog.append(toprint+'\n')
+        logme('Centre of circle x0, y0 and diametre : '+str(x0)+' '+str(y0)+' '+str(diam_cercle))
         
-    toprint='Ratio SY/SX :'+"{:.3f}".format(ratio)
-    print(toprint)
-    mylog.append(toprint+'\n')
+    logme('Ratio Y/X : '+"{:.3f}".format(ratio))
     
     if ratio >=50:
-        toprint='Rapport hauteur sur largeur supérieur à 50 - Exit'
-        print(toprint)
-        mylog.append(toprint+'\n')
+        logme('ERROR: Rapport hauteur sur largeur supérieur à 50 - Exit')
         sys.exit()
     #nouvelle taille image en y 
     newiw=int(iw*ratio)
