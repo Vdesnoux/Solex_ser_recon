@@ -38,7 +38,7 @@ def solex_proc(serfile, options):
     clearlog()
     plt.gray()              #palette de gris si utilise matplotlib pour visu debug
     flag_display = options['flag_display']
-    
+    logme('Using pixel shift: ' + str(options['shift']))
     """
     ----------------------------------------------------------------------------
     Reconstuit l'image du disque a partir de l'image moyenne des trames et 
@@ -216,7 +216,7 @@ def solex_proc(serfile, options):
     """
     ------------------------------------------------------------
     calcul de la geometrie si on voit les bords du soleil
-    sinon on applique un facteur x=0.5
+    sinon on applique un facteur x=1.0
     ------------------------------------------------------------
     """
     

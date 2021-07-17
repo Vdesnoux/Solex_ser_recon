@@ -101,7 +101,6 @@ Si version mac
 """
 version_mac =False
 disk_display=False
-
 if not(version_mac):
     try:
         with open('c:/py/pysolex.ini', "r") as f1:
@@ -176,10 +175,12 @@ def do_work():
         # appel au module d'extraction, reconstruction et correction
         #
         # basefich: nom du fichier ser sans extension et sans repertoire
-        # dx: decalage en pixel par rapport au centre de la raie 
+        # dx: decalage en pixel par rapport au centre de la raie
+        global shift
         try:
             shift=int(shift)
         except:
+            print('invalid shift input: ', shift)
             shift=0
 
         options = {'flag_display':flag_display, 'shift':shift, 'save_fit':save_fit}

@@ -35,8 +35,7 @@ class ser_reader:
         FrameCount=np.fromfile(serfile, dtype='uint32', count=1,offset=offset)
         self.FrameCount=FrameCount[0]
         
-        logme('Width, Height : '+str(self.Width)+' '+str(self.Height)) 
-        logme('Number of frames : '+str(self.FrameCount))
+        
    
     
         self.count=self.Width*self.Height       # Nombre d'octet d'une trame
@@ -127,6 +126,8 @@ def read_video_improved(serfile, fit, LineRecal, options):
 # compute mean image of video
 def compute_mean(serfile):
     rdr = ser_reader(serfile)
+    logme('Width, Height : '+str(rdr.Width)+' '+str(rdr.Height)) 
+    logme('Number of frames : '+str(rdr.FrameCount))
     my_data = np.zeros((rdr.ih, rdr.iw),dtype='uint64')
     while rdr.has_frames():
         img = rdr.next_frame()
