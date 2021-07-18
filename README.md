@@ -5,11 +5,17 @@ Fichier de lancement: Inti_ser_recon
 Appel le module Inti_recon
 
 Dans le fenetre de pysimpleGUI entrer le nom du fichier ser à traiter
+
 Suppression de "Cocher la case "display" pour un affichage de la reconstruction en live"
+
 Angle de tilt: si a zero calcul automatique, si valeur differente de zero le calcul utilisera cette valeur
+
 Ratio SY/SX: si a zero calcul automatique, si valeur differente de zero le calcul utilisera cette valeur
+
 Cocher la case pour afficher un disque noir sur l'image png dont les seuils permettent de faire ressortir les protuberances
+
 Cocher la case pour ne sauvegarder en fits que les deux images finales _recon.fits et _clahe.fits
+
 Shift: decalage en pixels par rapport au minimum de la raie pour reconstruire sur une autre longueur d'onde
 exemple: decalage de n pixels pour reconstruire le continuum
 
