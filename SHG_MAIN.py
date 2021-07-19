@@ -160,9 +160,10 @@ def do_work():
         
     # boucle sur la liste des fichers
     for serfile in serfiles:
+
         if serfile=='':
             sys.exit()
-        
+        print('file %s is processing'%serfile)
         WorkDir=os.path.dirname(serfile)+"/"
         os.chdir(WorkDir)
         base=os.path.basename(serfile)
