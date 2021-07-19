@@ -17,16 +17,20 @@ automatiquement
 - ajout de sauvegarde png _protus avec flag disk_display en dur
 
 """
+import cv2
+
 import math
 import numpy as np
-import cv2
+import PySimpleGUI as sg
+
 import os
 import sys
 import Solex_recon as sol
 from astropy.io import fits
 import cProfile
 #import time
-import PySimpleGUI as sg
+
+
 
 def UI_SerBrowse (WorkDir):
     """
@@ -101,6 +105,7 @@ Si version mac
 """
 version_mac =False
 disk_display=False
+file_list = []
 if not(version_mac):
     try:
         with open('c:/py/pysolex.ini', "r") as f1:
@@ -108,11 +113,23 @@ if not(version_mac):
             param_init = f1.readlines()
             WorkDir=param_init[0]
     except:
+        shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only = 0, False, 0, '0', True, False
+         #list of files to process
+        ##add a command line argument.
+        if len(sys.argv)>0 : #lauch by clipLimit
+            for file_ in sys.argv : 
+                if file_.split('.')[-1].upper()=='SER' : 
+                    file_list .append(file_)
+            print('theses files are going to be processed : ', file_list)
+            print('with default values : flag_display %s, ratio_fixe %s, slant_fix %s, save_fit %s, clahe_only %s' %(False, False, 0, True, False) )
+            
         WorkDir=''
-
-    # Recupere paramatres de la boite de dialogue
-    serfiles, shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only =UI_SerBrowse(WorkDir)
-    serfiles=serfiles.split(';')
+    if len(file_list)==0 : 
+        # Recupere paramatres de la boite de dialogue
+        serfiles, shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only =UI_SerBrowse(WorkDir)
+        serfiles=serfiles.split(';')
+    else : #launch with some ser file in argument)
+        serfiles = file_list
     
 else:
     WorkDir='/Users/macbuil/ocuments/pyser/'
@@ -192,9 +209,9 @@ def do_work():
             except:
                 print('invalid slant input: '+ slant_fix)
                 pass
-        
+        print(1)
         frame, header, cercle=sol.solex_proc(serfile,options)
-        
+        print(2)
         base=os.path.basename(serfile)
         basefich=os.path.splitext(base)[0]
        
