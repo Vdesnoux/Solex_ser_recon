@@ -160,8 +160,6 @@ def do_work():
         
     # boucle sur la liste des fichers
     for serfile in serfiles:
-        print (serfile)
-
         if serfile=='':
             sys.exit()
         
@@ -209,9 +207,7 @@ def do_work():
             except:
                 print('invalid slant input: '+ slant_fix)
                 pass
-        print(1)
         frame, header, cercle=sol.solex_proc(serfile,options)
-        print(2)
         base=os.path.basename(serfile)
         basefich=os.path.splitext(base)[0]
        
