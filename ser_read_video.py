@@ -35,9 +35,6 @@ class ser_reader:
         FrameCount=np.fromfile(serfile, dtype='uint32', count=1,offset=offset)
         self.FrameCount=FrameCount[0]
         
-        
-   
-    
         self.count=self.Width*self.Height       # Nombre d'octet d'une trame
         self.FrameIndex=-1             # Index de trame, on evite les deux premieres
         self.offset=178               # Offset de l'entete fichier ser
@@ -60,8 +57,6 @@ class ser_reader:
         
         if self.flag_rotate:
             img=np.rot90(img)
-        
-        
         return img
 
     def has_frames(self):
@@ -86,16 +81,17 @@ def read_video_improved(serfile, fit, LineRecal, options):
     else:
         #Disk=np.zeros((ih,1), dtype='uint16')
         FrameMax=rdr.FrameCount
-        print((ih,FrameMax))
         Disk=np.zeros((ih,FrameMax), dtype='uint16')
         
     shift = options['shift']
     ind_l = (np.asarray(fit)[:, 0] + np.ones(ih) * (LineRecal + shift)).astype(int)
+    
+    #CLEAN if fitting goes too far
+    ind_l = np.where(ind_l<iw-1-shift, ind_l, iw-2-shift)
     ind_r = (ind_l + np.ones(ih)).astype(int)
     left_weights = np.ones(ih) - np.asarray(fit)[:, 1]
     right_weights = np.ones(ih) - left_weights
-    
-    
+
     # lance la reconstruction du disk a partir des trames
     print('reader num frames:', rdr.FrameCount)
     while rdr.has_frames():
@@ -106,12 +102,11 @@ def read_video_improved(serfile, fit, LineRecal, options):
                 cv2.destroyAllWindows()
                 sys.exit()
 
-        # improve speed here
         left_col = img[np.arange(ih), ind_l]
         right_col = img[np.arange(ih), ind_r]
         IntensiteRaie = left_col*left_weights + right_col*right_weights
+        
         #ajoute au tableau disk 
-
         Disk[:,rdr.FrameIndex]=IntensiteRaie
         
         if options['flag_display'] and rdr.FrameIndex %10 ==0:
@@ -119,7 +114,6 @@ def read_video_improved(serfile, fit, LineRecal, options):
             if cv2.waitKey(1) == 27:                     # exit if Escape is hit
                 cv2.destroyAllWindows()    
                 sys.exit()
-
     return Disk, ih, iw, rdr.FrameCount
 
 
