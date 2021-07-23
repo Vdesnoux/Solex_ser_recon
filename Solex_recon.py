@@ -70,11 +70,18 @@ def solex_proc(serfile, options):
     """
 
     
-    savefich=basefich+'_mean'
-
+    #savefich=basefich+'_mean'
+    # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
-        SaveHdu=fits.PrimaryHDU(mean_img,header=hdr)
-        SaveHdu.writeto(savefich+'.fit',overwrite=True)
+        DiskHDU=fits.PrimaryHDU(mean_img,header=hdr)
+        #SaveHdu.writeto(savefich+'.fits',overwrite=True)
+        if options['flag_file']:
+            DiskHDU.writeto(basefich+'_mean.fits', overwrite='True')
+        else:
+            DiskHDU.writeto(basefich+'_mean.fit', overwrite='True')
+
+
+
     #affiche image moyenne
     if flag_display:
         cv2.namedWindow('Ser mean', cv2.WINDOW_NORMAL)
@@ -125,8 +132,8 @@ def solex_proc(serfile, options):
         deci=x-int(x)
         fit.append([int(x)-LineRecal,deci,y])
         #ecart.append([x-LineRecal,y])
-    
-    logme('Coeff A0, A1, A12 :  '+str(a)+'  '+str(b)+'  '+str(c))
+    # Modification Jean-Francois: correct the variable names: A0, A1, A2
+    logme('Coeff A0, A1, A2 :  '+str(a)+'  '+str(b)+'  '+str(c))
     
     np_fit=np.asarray(fit)
     xi, xdec,y = np_fit.T
@@ -150,9 +157,15 @@ def solex_proc(serfile, options):
     hdr['NAXIS1']=iw # note: slightly dodgy, new width
    
     #sauve fichier disque reconstruit
+    # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(Disk,header=hdr)
-        DiskHDU.writeto(basefich+'_img.fit',overwrite='True')
+        if options['flag_file']:
+            DiskHDU.writeto(basefich+'_img.fits', overwrite='True')
+        else:
+            DiskHDU.writeto(basefich+'_img.fit', overwrite='True') 
+
+
     
     if flag_display:
         cv2.destroyAllWindows()
@@ -208,9 +221,13 @@ def solex_proc(serfile, options):
         img[c-1:c,]=s
     
     #sauvegarde le fits
+    # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(img,header=hdr)
-        DiskHDU.writeto(basefich+'_corr.fit', overwrite='True')
+        if options['flag_file']:
+            DiskHDU.writeto(basefich+'_corr.fits', overwrite='True')
+        else:
+            DiskHDU.writeto(basefich+'_corr.fit', overwrite='True') 
      
     
     """
@@ -224,10 +241,16 @@ def solex_proc(serfile, options):
     
     # sauve l'image circularisée
     frame=np.array(NewImg, dtype='uint16')
+    # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         hdr['NAXIS1']=newiw # note: slightly dodgy, new width again
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
-        DiskHDU.writeto(basefich+'_circle.fit',overwrite='True')
+        if options['flag_file']:
+            DiskHDU.writeto(basefich+'_circle.fits', overwrite='True')
+        else:
+            DiskHDU.writeto(basefich+'_circle.fit', overwrite='True') 
+
+
     
     """
     on fit un cercle !!!
@@ -344,9 +367,15 @@ def solex_proc(serfile, options):
     BelleImage=np.divide(frame,flat)
     frame=np.array(BelleImage, dtype='uint16')
     # sauvegarde de l'image deflattée
+    # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
-        DiskHDU.writeto(basefich+'_flat.fit',overwrite='True')
+        if options['flag_file']:
+            DiskHDU.writeto(basefich+'_flat.fits', overwrite='True')
+        else:
+            DiskHDU.writeto(basefich+'_flat.fit', overwrite='True')
+
+
    
     """
     -----------------------------------------------------------------------
@@ -402,10 +431,14 @@ def solex_proc(serfile, options):
     
     # sauvegarde en fits de l'image finale
     frame=np.array(img, dtype='uint16')
+    # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
-        DiskHDU.writeto(basefich+'_recon.fit', overwrite='True')
-    
+        if options['flag_file']:
+            DiskHDU.writeto(basefich+'_recon.fits', overwrite='True')
+        else:
+            DiskHDU.writeto(basefich+'_recon.fit', overwrite='True')  
+            
     with  open(basefich+'_log.txt', "w") as logfile:
         logfile.writelines(mylog)
     
