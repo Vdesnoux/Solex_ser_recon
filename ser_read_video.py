@@ -97,7 +97,7 @@ def read_video_improved(serfile, fit, LineRecal, options):
     print('reader num frames:', rdr.FrameCount)
     while rdr.has_frames():
         img = rdr.next_frame()               
-        if options['flag_display'] and rdr.FrameIndex %10 == 0 :
+        if options['flag_display'] and rdr.FrameIndex % 10 == 0 :
             cv2.imshow('image', img)
             if cv2.waitKey(1)==27:
                 cv2.destroyAllWindows()
@@ -110,7 +110,7 @@ def read_video_improved(serfile, fit, LineRecal, options):
         #ajoute au tableau disk 
         Disk[:,rdr.FrameIndex]=IntensiteRaie
         
-        if options['flag_display'] and rdr.FrameIndex %10 ==0:
+        if options['flag_display'] and rdr.FrameIndex % 10 ==0:
             cv2.imshow ('disk', Disk)
             if cv2.waitKey(1) == 27:                     # exit if Escape is hit
                 cv2.destroyAllWindows()    

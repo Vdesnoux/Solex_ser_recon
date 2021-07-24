@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from skimage import data
 from skimage import transform
 from skimage import filters
-
+from skimage.transform import downscale_local_mean
 import cv2
 
 import scipy
@@ -47,9 +47,9 @@ def two_step(X):
     values = np.linalg.norm(Xr, axis = 0) - 1
     #print(np.mean(values), np.std(values), max(values), min(values))
     ratio = width / height
-    return mat@np.array(center), height, phi, ratio, X, ellipse_points
+    return np.array(center), height, phi, ratio, X, ellipse_points
 
-def correct_image(image, phi, ratio):
+def correct_image(image, phi, ratio, center):
     logme('Y/X ratio : ' + "{:.3f}".format(ratio))
     logme('Tilt angle : ' + "{:.3f}".format(math.degrees(phi)) + " degrees")
     mat = np.array([[np.cos(phi), np.sin(phi)], [-np.sin(phi), np.cos(phi)]]) @ np.array([[1/ratio, 0], [0, 1]])
@@ -64,16 +64,14 @@ def correct_image(image, phi, ratio):
     my_transform = transform.ProjectiveTransform(matrix=mat3)
     corrected_img = transform.warp(image, my_transform, output_shape = (np.ceil(new_h),np.ceil(new_w)), cval  = image[0, 0])
     corrected_img = (2**16*corrected_img).astype(np.uint16) # note : 16-bit output
-    return corrected_img
+    new_center = (np.linalg.inv(mat) @ center.T).T - np.array([np.min(new_corners[:, 0]), np.min(new_corners[:, 1])])
+    return corrected_img, new_center
 
-
-
-def ellipse_to_circle(image, options, sigma = 20):
+def get_edge_list(image, sigma = 2):
     if sigma <= 0:
         logme('ERROR: could not find any edges')
         return image, (-1, -1, -1)
     
-    image = image / 65536 # assume 16 bit
     low_threshold = np.median(cv2.blur(image, ksize=(5, 5))) / 10
     high_threshold = low_threshold*1.5
     print('using thresholds:', low_threshold, high_threshold)
@@ -83,24 +81,21 @@ def ellipse_to_circle(image, options, sigma = 20):
         low_threshold=low_threshold,
         high_threshold=high_threshold,
     )
-    if options['flag_display'] and 0:
-        plt.imshow(edges)
-        plt.title('remember to close this window by pressing the "X"', color = 'red')
-        plt.show()
-    
+    raw_X = np.argwhere(edges)
     labelled, nf = scipy.ndimage.measurements.label(edges, structure  = [[1,1,1], [1,1,1],[1,1,1]])
     if nf == 0:
-        return ellipse_to_circle(image * 65536, options, sigma = sigma - 5) # try again with less blur, hope it will work
+        return get_edge_list(image, sigma = sigma - 0.5) # try again with less blur, hope it will work
     region_sizes = [-1] + [np.sum(labelled == i) for i in range(1, nf+1)]
     filt = np.zeros(edges.shape)
     for label in sorted(region_sizes, reverse = True)[:min(nf, NUM_REG)]:
         filt[labelled == region_sizes.index(label)] = 1
         
     X = np.argwhere(filt) # find the non-zero pixels
+    
     x_min, y_min, x_max, y_max = np.min(X[:, 0]), np.min(X[:, 1]), np.max(X[:, 0]), np.max(X[:, 1])
     dx = x_max - x_min
     dy = y_max - y_min
-    crop = 0.025
+    crop = 0.015
 
     mask = np.zeros(filt.shape)
     mask[int(x_min+dx*crop):int(x_max-dx*crop), int(y_min+dy*crop):int(y_max-dy*crop)] = 1
@@ -110,16 +105,30 @@ def ellipse_to_circle(image, options, sigma = 20):
     x_min, y_min, x_max, y_max = np.min(X[:, 0]), np.min(X[:, 1]), np.max(X[:, 0]), np.max(X[:, 1])
             
     X = np.array(X, dtype='float')
-    center, height, phi, ratio, X_f, ellipse_points = two_step(X)
-    fix_img = correct_image(image, phi, ratio)
+    return np.array([X, raw_X], dtype=object) 
 
+def ellipse_to_circle(image, options):
+    image = image / 65536 # assume 16 bit
+    factor = 4
+    processed = get_edge_list(downscale_local_mean(image, (factor,factor))) * factor# down-scaled, then upscaled back
+    X, raw_X = processed[0], processed[1]
+    center, height, phi, ratio, X_f, ellipse_points = two_step(X)
+    center = np.array([center[1], center[0]])
+    #plt.imshow(image)
+    #plt.plot([center[0]], [center[1]], 'ro')
+    #plt.show()
+    fix_img, center = correct_image(image, phi, ratio, center)
+    
+    #plt.imshow(fix_img)
+    #plt.plot([center[0]], [center[1]], 'ro')
+    #plt.show()
+    
     if options['flag_display']:
         fig, ax = plt.subplots(ncols=2, nrows = 2)
 
         ax[0][0].imshow(image, cmap=plt.cm.gray)
         ax[0][0].set_title('uncorrected image', fontsize = 11)
-        raw = np.argwhere(edges)
-        ax[0][1].plot(raw[:, 1], image.shape[0] - raw[:, 0], 'ro', label = 'edge detection')
+        ax[0][1].plot(raw_X[:, 1], image.shape[0] - raw_X[:, 0], 'ro', label = 'edge detection')
         ax[0][1].set_xlim([0, image.shape[1]])
         ax[0][1].set_ylim([0, image.shape[0]])
         ax[0][1].legend()
@@ -130,7 +139,6 @@ def ellipse_to_circle(image, options, sigma = 20):
         ax[1][1].legend()
         ax[1][0].imshow(fix_img, cmap=plt.cm.gray)
         ax[1][0].set_title('geometrically corrected image', fontsize=11)
-        
         ax[0][1].set_title('remember to close this window \n by pressing the "X"', color = 'red')
 
         #creating a timer object to auto-close plot after some time
@@ -140,7 +148,6 @@ def ellipse_to_circle(image, options, sigma = 20):
         timer.add_callback(close_event)
         timer.start()
         plt.show()
-
-    
-    circle = (center[0], center[1], height) # radius == height
+  
+    circle = (center[0], center[1], height*ratio) # radius == height*ratio
     return fix_img, circle

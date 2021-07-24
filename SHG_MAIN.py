@@ -83,7 +83,7 @@ def UI_SerBrowse (WorkDir):
 le programme commence ici !
 --------------------------------------------------------------------------------------------
 """
-disk_display=False
+disk_display=True
 serfiles = []
     
 shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only = 0, False, '', '', True, False
@@ -164,7 +164,7 @@ def do_work():
                 print('invalid tilt input: '+ slant_fix)
 
         frame, header, cercle=sol.solex_proc(serfile,options)
-
+        print('circle = ' , cercle)
 
         base=os.path.basename(serfile)
         basefich=os.path.splitext(base)[0]
@@ -208,10 +208,10 @@ def do_work():
         fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
         fc2[fc2<0]=0
         frame_contrasted3=np.array(fc2, dtype='uint16')
-        if ratio_fixe==0 and disk_display==True:
-            x0=cercle[0]
-            y0=cercle[1]-1
-            r=int(cercle[2]*0.5)+1
+        if not cercle == (-1, -1, -1) and disk_display==True:
+            x0=int(cercle[0])
+            y0=int(cercle[1])
+            r=int(cercle[2]) - 4
             frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1)
         
         Seuil_bas=np.percentile(cl1, 25)
@@ -279,7 +279,7 @@ def do_work():
 
         cv2.destroyAllWindows()
 
-if 1:        
+if 0:        
     cProfile.run('do_work()', sort='cumtime')
 else:
     do_work()
