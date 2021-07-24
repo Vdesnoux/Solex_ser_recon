@@ -81,12 +81,9 @@ def UI_SerBrowse (WorkDir):
     FileNames=values['-FILE-']
     shift=values['-DX-']
     flag_display=values['-DISP-']
-    if values['-RATIO-'] == '':
-        ratio_fixe = 0
-    else:
-        ratio_fixe=float(values['-RATIO-'])
     
-    return FileNames, shift, flag_display, ratio_fixe, values['-SLANT-'], values['-FIT-'], values['-CLAHE_ONLY-']
+    
+    return FileNames, shift, flag_display, values['-RATIO-'], values['-SLANT-'], values['-FIT-'], values['-CLAHE_ONLY-']
 
 """
 -------------------------------------------------------------------------------------------
@@ -113,15 +110,15 @@ if not(version_mac):
             param_init = f1.readlines()
             WorkDir=param_init[0]
     except:
-        shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only = 0, False, 0, '0', True, False
+        shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only = 0, False, '', '', True, False
          #list of files to process
         ##add a command line argument.
-        if len(sys.argv)>0 : #lauch by clipLimit
-            for file_ in sys.argv : 
+        if len(sys.argv)>1 : #lauch by clipLimit
+            for file_ in sys.argv[1:] : 
                 if file_.split('.')[-1].upper()=='SER' : 
                     file_list .append(file_)
             print('theses files are going to be processed : ', file_list)
-            print('with default values : flag_display %s, ratio_fixe %s, slant_fix %s, save_fit %s, clahe_only %s' %(False, False, 0, True, False) )
+            print('with default values : shift %s, flag_display %s, ratio_fixe "%s", slant_fix "%s", save_fit %s, clahe_only %s' %(shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only) )
             
         WorkDir=''
     if len(file_list)==0 : 
@@ -200,14 +197,19 @@ def do_work():
             shift=0
 
         options = {'flag_display':flag_display, 'shift':shift, 'save_fit':save_fit}
-        if not ratio_fixe == 0:
-            options['ratio_fixe'] = ratio_fixe
+        
+        if not ratio_fixe == '':
+            try:
+                options['ratio_fixe'] = float(ratio_fixe)
+            except:
+                print('invalid Y/X ratio input: ', ratio_fixe)
+        
         if not slant_fix == '':
             try:           
                 options['slant_fix'] = math.radians(float(slant_fix))
             except:
-                print('invalid slant input: '+ slant_fix)
-                pass
+                print('invalid tilt input: '+ slant_fix)
+
         frame, header, cercle=sol.solex_proc(serfile,options)
         base=os.path.basename(serfile)
         basefich=os.path.splitext(base)[0]
