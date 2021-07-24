@@ -57,10 +57,10 @@ def UI_SerBrowse (WorkDir):
     [sg.Text('SER file name(s)', size=(20, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
     [sg.Checkbox('Show images', default=False, key='-DISP-')],
-    [sg.Checkbox('Save .fit files', default=True, key='-FIT-'),sg.Checkbox('FITS (or FIT) file format', default=True, key='-FITS_FORMAT-')],
+    [sg.Checkbox('Save .fit files', default=False, key='-FIT-'),sg.Checkbox('FITS (or FIT) file format', default=True, key='-FITS_FORMAT-')],
     [sg.Checkbox('Save CLAHE.png image only', default=False, key='-CLAHE_ONLY-')],
     [sg.Text('Y/X ratio (blank for auto)', size=(20,1)), sg.Input(default_text='', size=(8,1),key='-RATIO-')],
-    [sg.Text('Slant angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],
+    [sg.Text('Tilt angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],
     [sg.Text('Pixel offset',size=(20,1)),sg.Input(default_text='0',size=(8,1),key='-DX-',enable_events=True)],
     [sg.Button('OK'), sg.Cancel()]
     ] 
@@ -82,7 +82,6 @@ def UI_SerBrowse (WorkDir):
     FileNames=values['-FILE-']
     shift=values['-DX-']
     flag_display=values['-DISP-']
-
     if values['-RATIO-'] == '':
         ratio_fixe = 0
     else:
@@ -202,7 +201,7 @@ def do_work():
             options['ratio_fixe'] = ratio_fixe
         if not slant_fix == '':
             try:           
-                options['slant_fix'] = math.radians(float(slant_fix))
+                options['slant_fix'] = float(slant_fix)
             except:
                 print('invalid slant input: '+ slant_fix)
                 pass

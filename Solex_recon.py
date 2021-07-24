@@ -18,6 +18,8 @@ et une ligne de reference
 
 from solex_util import *
 from ser_read_video import *
+from ellipse_to_circle import ellipse_to_circle, correct_image
+
 
 def make_header(rdr):        
     # initialisation d'une entete fits (etait utilisé pour sauver les trames individuelles
@@ -36,7 +38,7 @@ def make_header(rdr):
 
 def solex_proc(serfile, options):
     clearlog()
-    plt.gray()              #palette de gris si utilise matplotlib pour visu debug
+    #plt.gray()              #palette de gris si utilise matplotlib pour visu debug
     flag_display = options['flag_display']
     logme('Using pixel shift: ' + str(options['shift']))
     """
@@ -151,6 +153,8 @@ def solex_proc(serfile, options):
     #np.savetxt(reconfile,ecart,fmt='%f',header='fichier recon',footer=str(LineRecal))
 
     
+
+
     
     Disk, ih, iw, FrameCount = read_video_improved(serfile, fit, LineRecal, options)
 
@@ -237,20 +241,7 @@ def solex_proc(serfile, options):
     ------------------------------------------------------------
     """
     
-    NewImg, newiw, flag_nobords, cercle =circularise(img,iw,ih,options)
-    
-    # sauve l'image circularisée
-    frame=np.array(NewImg, dtype='uint16')
-    # Modification Jean-Francois: choice of the FITS or FIT file format
-    if options['save_fit']:
-        hdr['NAXIS1']=newiw # note: slightly dodgy, new width again
-        DiskHDU=fits.PrimaryHDU(frame,header=hdr)
-        if options['flag_file']:
-            DiskHDU.writeto(basefich+'_circle.fits', overwrite='True')
-        else:
-            DiskHDU.writeto(basefich+'_circle.fit', overwrite='True') 
-
-
+    NewImg, newiw, flag_nobords = img, iw, False
     
     """
     on fit un cercle !!!
@@ -264,7 +255,9 @@ def solex_proc(serfile, options):
     on echaine avec la correction de transversallium
     --------------------------------------------------------------
     """
-    
+
+    frame = NewImg
+    flag_nobords = False
     # on cherche la projection de la taille max du soleil en Y
     y1,y2=detect_bord(frame, axis=1,offset=0)
     #print ('flat ',y1,y2)
@@ -376,61 +369,22 @@ def solex_proc(serfile, options):
             DiskHDU.writeto(basefich+'_flat.fit', overwrite='True')
 
 
-   
     """
-    -----------------------------------------------------------------------
-    correction de distorsion slant disque
-    -----------------------------------------------------------------------
-    """
-    img=frame
-    if flag_nobords==False:
-        # correction de slant uniquement si on voit les limbes droit/gauche
-        # trouve les coordonnées y des bords du disque dont on a les x1 et x2 
-        # pour avoir les coordonnées y du grand axe horizontal
-        # on cherche la projection de la taille max du soleil en Y et en X
-        x1,x2=detect_bord(frame, axis=0,offset=0)
-        y_x1,y_x2=detect_y_of_x(img, x1, x2)
-        BackGround=1000
-        
-        # test que le grand axe de l'ellipse est horizontal
-        if abs(y_x1-y_x2)> 5 :
-            #calcul l'angle et fait une interpolation de slant
-            dy=(y_x2-y_x1)
-            dx=(x2-x1)
-            TanAlpha=(-dy/dx)
-            AlphaRad=math.atan(TanAlpha)
-            AlphaDeg=math.degrees(AlphaRad)
-            if 'slant_fix' in options:
-                TanAlpha = math.tan((options['slant_fix']))
-                AlphaDeg = math.degrees(options['slant_fix'])
-            logme('Slant angle : '+"{:+.2f} degrees".format(AlphaDeg))
-            
-            
-            #decale lignes images par rapport a x1
-            colref=x1
-            NewImg=np.empty((ih,newiw))
-            for i in range(0,newiw):
-                x=img[:,i]
-                NewImg[:,i]=x
-                y=np.arange(0,ih)
-                dy=(i-colref)*TanAlpha
-                #print (dy)
-                #x et y sont les valeurs de la ligne originale avant decalge
-                ycalc = y + np.ones(ih)*dy
-                f=interp1d(ycalc,x,kind='linear',fill_value=(BackGround,BackGround),bounds_error=False)
-                xcalc=f(y)
-                NewLine=xcalc
-                NewImg[:,i]=NewLine
-            NewImg[NewImg<=0]=0  #modif du 19/05/2021 etait a 1000
-            img=NewImg
-    # refait un calcul de mise a l'echelle
-    # le slant peut avoir legerement modifié la forme
-    # mais en fait pas vraiment... donc on met en commentaire
-    # img, newiw=circularise(img,newiw, ih,ratio_fixe)
+    We now apply ellipse_fit to apply the geometric correction
 
+    """
+
+    if not 'ratio_fixe' in options and not 'slant_fix' in options:
+        frame, cercle = ellipse_to_circle(frame, options)
+    else:
+        ratio = options['ratio_fixe'] if 'ratio_fixe' in options else 1.0
+        phi = math.radians(options['slant_fix']) if 'slant_fix' in options else 0.0
+        frame, cercle = correct_image(frame / 65536, phi, ratio), (-1, -1, -1) # Note that we assume 16-bit
+        
+    
     
     # sauvegarde en fits de l'image finale
-    frame=np.array(img, dtype='uint16')
+    
     # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
