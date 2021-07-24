@@ -77,12 +77,7 @@ def solex_proc(serfile, options):
     # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(mean_img,header=hdr)
-        #SaveHdu.writeto(savefich+'.fits',overwrite=True)
-        if options['flag_file']:
-            DiskHDU.writeto(basefich+'_mean.fits', overwrite='True')
-        else:
-            DiskHDU.writeto(basefich+'_mean.fit', overwrite='True')
-
+        DiskHDU.writeto(basefich+'_mean.fits', overwrite='True')
 
 
     #affiche image moyenne
@@ -165,12 +160,7 @@ def solex_proc(serfile, options):
     # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(Disk,header=hdr)
-        if options['flag_file']:
-            DiskHDU.writeto(basefich+'_img.fits', overwrite='True')
-        else:
-            DiskHDU.writeto(basefich+'_img.fit', overwrite='True') 
-
-
+        DiskHDU.writeto(basefich+'_img.fits', overwrite='True')
     
     if flag_display:
         cv2.destroyAllWindows()
@@ -229,11 +219,7 @@ def solex_proc(serfile, options):
     # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(img,header=hdr)
-        if options['flag_file']:
-            DiskHDU.writeto(basefich+'_corr.fits', overwrite='True')
-        else:
-            DiskHDU.writeto(basefich+'_corr.fit', overwrite='True') 
-     
+        DiskHDU.writeto(basefich+'_corr.fits', overwrite='True')     
     
     """
     ------------------------------------------------------------
@@ -364,10 +350,7 @@ def solex_proc(serfile, options):
     # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
-        if options['flag_file']:
-            DiskHDU.writeto(basefich+'_flat.fits', overwrite='True')
-        else:
-            DiskHDU.writeto(basefich+'_flat.fit', overwrite='True')
+        DiskHDU.writeto(basefich+'_flat.fits', overwrite='True')
 
 
     """
@@ -389,10 +372,7 @@ def solex_proc(serfile, options):
     # Modification Jean-Francois: choice of the FITS or FIT file format
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
-        if options['flag_file']:
-            DiskHDU.writeto(basefich+'_recon.fits', overwrite='True')
-        else:
-            DiskHDU.writeto(basefich+'_recon.fit', overwrite='True')  
+        DiskHDU.writeto(basefich+'_recon.fits', overwrite='True')
             
     with  open(basefich+'_log.txt', "w") as logfile:
         logfile.writelines(mylog)

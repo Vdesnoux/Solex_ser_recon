@@ -15,7 +15,6 @@ import cv2
 import sys
 import math
 from scipy.ndimage import gaussian_filter1d
-#import circle_fit as cf
 
 mylog=[]
 

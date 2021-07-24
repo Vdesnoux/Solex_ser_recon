@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Version 24 July 2021
-
-
 @author: valerie desnoux
 with improvements by Andrew Smith
-
-
 Front end de traitements spectro helio de fichier ser
 - interface pour selectionner un ou plusieurs fichiers
 - appel au module solex_recon qui traite la sequence et genere les fichiers fits
@@ -15,7 +11,6 @@ Front end de traitements spectro helio de fichier ser
 - ajout d'une zone pour entrer un ratio fixe. Si reste à zero alors il sera calculé
 automatiquement
 - ajout de sauvegarde png _protus avec flag disk_display en dur
-
 """
 import math
 import numpy as np
@@ -25,7 +20,6 @@ import sys
 import Solex_recon as sol
 from astropy.io import fits
 import cProfile
-#import time
 import PySimpleGUI as sg
 
 import ctypes # Modification Jean-Francois: for reading the monitor size
@@ -42,25 +36,23 @@ def UI_SerBrowse (WorkDir):
     -------
     Filenames : TYPE string
         liste des fichiers selectionnés, avec leur extension et le chemin complet
-    Shift : TYPE string
-        Ecart en pixel demandé pour reconstruire le disque sur une longeur d'onde en relatif par rapport au centre de la raie  
+    Shift : Type string
+        Ecart en pixel demandé pour reconstruire le disque 
+        sur une longeur d'onde en relatif par rapport au centre de la raie  
     ratio_fixe : ratio Y/X en fixe, si egal à zéro alors calcul automatique
-    flag_display: affiche ou non la construction du disque en temps réel
+    flag_isplay: affiche ou non la construction du disque en temps réel
     """
     sg.theme('Dark2')
     sg.theme_button_color(('white', '#500000'))
     
-
-    # Modification Jean-Francois
-    # New: add sg.Checkbox('FITS (or FIT) file format', default=True, key='-FITS_FORMAT-')]
     layout = [
     [sg.Text('SER file name(s)', size=(20, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
     [sg.Checkbox('Show graphics', default=False, key='-DISP-')],
-    [sg.Checkbox('Save FITS files', default=False, key='-FIT-'),sg.Checkbox('.fits (or .fit) file format', default=True, key='-FITS_FORMAT-')],
-    [sg.Checkbox('Save CLAHE.png image only', default=False, key='-CLAHE_ONLY-')],
+    [sg.Checkbox('Save .fits files', default=False, key='-FIT-')],
+    [sg.Checkbox('Save CLAHE image only', default=False, key='-CLAHE_ONLY-')],
     [sg.Text('Y/X ratio (blank for auto)', size=(20,1)), sg.Input(default_text='', size=(8,1),key='-RATIO-')],
-    [sg.Text('Tilt angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],
+    [sg.Text('Slant angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],
     [sg.Text('Pixel offset',size=(20,1)),sg.Input(default_text='0',size=(8,1),key='-DX-',enable_events=True)],
     [sg.Button('OK'), sg.Cancel()]
     ] 
@@ -82,82 +74,52 @@ def UI_SerBrowse (WorkDir):
     FileNames=values['-FILE-']
     shift=values['-DX-']
     flag_display=values['-DISP-']
-    if values['-RATIO-'] == '':
-        ratio_fixe = 0
-    else:
-        ratio_fixe=float(values['-RATIO-'])
-
-    # Modification Jean-Francois
-    # New: add values['-FITS_FORMAT-'] in the list
-    return FileNames, shift, flag_display, ratio_fixe, values['-SLANT-'], values['-FIT-'], values['-CLAHE_ONLY-'], values['-FITS_FORMAT-']
+    
+    
+    return FileNames, shift, flag_display, values['-RATIO-'], values['-SLANT-'], values['-FIT-'], values['-CLAHE_ONLY-']
 
 """
 -------------------------------------------------------------------------------------------
 le programme commence ici !
-
-Si version windows
-# recupere les parametres utilisateurs enregistrés lors de la session
-# precedente dans un fichier txt "pysolex.ini" qui va etre placé ici en dur
-# dans repertoire c:/py/ pour l'instant
-
-Si version mac
-#recupere les noms de fichiers par un input console
-#valeurs de flag_display, Shift et ratio_fixe sont en dur dans le programme
-
 --------------------------------------------------------------------------------------------
 """
-version_mac =False
 disk_display=False
-if not(version_mac):
-    try:
-        with open('D:/Astro_Software/Solex_ser_recon_EN-main/pysolex.ini', "r") as f1:  # Depends from the user system ...
-        
-            param_init = f1.readlines()
-            WorkDir=param_init[0]
-    except:
-        WorkDir=''
-
-    # Recupere paramatres de la boite de dialogue
-
-    # Modification Jean-Francois
-    # New: add 'flag_file' in the list
-    serfiles, shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only, flag_file =UI_SerBrowse(WorkDir)
+serfiles = []
+    
+shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only = 0, False, '', '', True, False
+# list of files to process
+## add a command line argument.
+if len(sys.argv)>1 : #lauch by clipLimit
+    for file_ in sys.argv[1:] : 
+        if file_.split('.')[-1].upper()=='SER' : 
+            serfiles.append(file_)
+    print('theses files are going to be processed : ', serfiles)
+    print('with default values : shift %s, flag_display %s, ratio_fixe "%s", slant_fix "%s", save_fit %s, clahe_only %s' %(shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only) )
+            
+WorkDir=''
+    
+# if no command line arguments, open GUI interface
+if len(serfiles)==0 : 
+    serfiles, shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only =UI_SerBrowse(WorkDir)
     serfiles=serfiles.split(';')
-    
-else:
-    WorkDir='/Users/macbuil/ocuments/pyser/'
-    serfiles=[]
-    print('nom du fichier sans extension, ou des fichiers sans extension séparés par une virgule')
-    basefichs=input('nom(s): ')
-    basefichs=basefichs.split(',')
-    for b in basefichs:
-        serfiles.append(WorkDir+b.strip()+'.ser')
-    # parametres en dur
-    flag_display=False
-    ratio_fixe=0
-    shift=0
-    
-    sys.exit()
-    
-#code commun mac ou windows
-#************************************************************************************************
+
+
 
 #pour gerer la tempo des affichages des images resultats dans cv2.waitKey
 #sit plusieurs fichiers à traiter
 
 def do_work():
     if len(serfiles)==1:
-        tempo=0 #4000
+        tempo=60000 #4000
     else:
         tempo=1000
         
     # boucle sur la liste des fichers
     for serfile in serfiles:
-        print (serfile)
 
         if serfile=='':
             sys.exit()
-        
+        print('file %s is processing'%serfile)
         WorkDir=os.path.dirname(serfile)+"/"
         os.chdir(WorkDir)
         base=os.path.basename(serfile)
@@ -166,20 +128,14 @@ def do_work():
             print('erreur nom de fichier : ',serfile)
             sys.exit()
         
-        # met a jour le repertoire si on a changé dans le fichier ini
-        try:
-            with open('D:/Astro_Software/Solex_ser_recon_EN-main/pysolex.ini', "w") as f1: # Depends from the user system ...
-                f1.writelines(WorkDir)
-        except:
-            pass
-        
         # ouverture du fichier ser
         try:
             f=open(serfile, "rb")
+            f.close()
         except:
             print('erreur ouverture fichier : ',serfile)
             sys.exit()
-        f.close()
+        
             
         
         # appel au module d'extraction, reconstruction et correction
@@ -188,26 +144,28 @@ def do_work():
         # dx: decalage en pixel par rapport au centre de la raie
         global shift
         try:
-            shift=int(shift)            
+            shift=int(shift)
         except:
             print('invalid shift input: ', shift)
             shift=0
 
-        # Modification Jean-Francois
-        # Old: options = {'flag_display':flag_display, 'shift':shift, 'save_fit':save_fit}
-        # New: options = {'flag_display':flag_display, 'shift':shift, 'save_fit':save_fit, 'flag_file':flag_file}
-        options = {'flag_display':flag_display, 'shift':shift, 'save_fit':save_fit, 'flag_file':flag_file}
-        if not ratio_fixe == 0:
-            options['ratio_fixe'] = ratio_fixe
+        options = {'flag_display':flag_display, 'shift':shift, 'save_fit':save_fit, 'tempo':tempo}
+        
+        if not ratio_fixe == '':
+            try:
+                options['ratio_fixe'] = float(ratio_fixe)
+            except:
+                print('invalid Y/X ratio input: ', ratio_fixe)
+        
         if not slant_fix == '':
             try:           
                 options['slant_fix'] = float(slant_fix)
             except:
-                print('invalid slant input: '+ slant_fix)
-                pass
-        
+                print('invalid tilt input: '+ slant_fix)
+
         frame, header, cercle=sol.solex_proc(serfile,options)
-        
+
+
         base=os.path.basename(serfile)
         basefich=os.path.splitext(base)[0]
         
@@ -315,17 +273,13 @@ def do_work():
         frame2=np.copy(frame)
         frame2=np.array(cl1, dtype='uint16')
         # sauvegarde le fits
-        # Modification Jean-Francois: choice of the FITS or FIT file format
         if options['save_fit']:
             DiskHDU=fits.PrimaryHDU(frame2,header)
-            if options['flag_file']:
-                DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
-            else:
-                DiskHDU.writeto(basefich+'_clahe.fit', overwrite='True')              
+            DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
 
         cv2.destroyAllWindows()
 
-if 0:        
+if 1:        
     cProfile.run('do_work()', sort='cumtime')
 else:
     do_work()

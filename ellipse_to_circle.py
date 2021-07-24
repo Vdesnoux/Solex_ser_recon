@@ -21,11 +21,6 @@ from matplotlib.patches import Ellipse
 NUM_REG = 1 #6 # include biggest NUM_REG regions in fit
 
 
-filename = 'D:/SHG examples/16_33_15/16_33_15_corr.png' #sys.argv[1]
-filename = 'D:/SHG examples/13_06_21/Test_161540_diskHC.png' #sys.argv[1]
-
-
-
 def dofit(X):
     X1 = X[:, 0]
     X2 = X[:, 1]
@@ -79,8 +74,8 @@ def ellipse_to_circle(image, options, sigma = 20):
         return image, (-1, -1, -1)
     
     image = image / 65536 # assume 16 bit
-    low_threshold = np.median(cv2.blur(image, ksize=(5, 5))) / 10 #float(sys.argv[3])
-    high_threshold = low_threshold*1.5#float(sys.argv[4])
+    low_threshold = np.median(cv2.blur(image, ksize=(5, 5))) / 10
+    high_threshold = low_threshold*1.5
     print('using thresholds:', low_threshold, high_threshold)
     edges = skimage.feature.canny(
         image=image,
@@ -137,6 +132,13 @@ def ellipse_to_circle(image, options, sigma = 20):
         ax[1][0].set_title('geometrically corrected image', fontsize=11)
         
         ax[0][1].set_title('remember to close this window \n by pressing the "X"', color = 'red')
+
+        #creating a timer object to auto-close plot after some time
+        def close_event():
+            plt.close()
+        timer = fig.canvas.new_timer(interval = options['tempo']) 
+        timer.add_callback(close_event)
+        timer.start()
         plt.show()
 
     
