@@ -18,7 +18,7 @@ import scipy
 from ellipse import LsqEllipse
 from matplotlib.patches import Ellipse
 
-NUM_REG = 6 #6 # include biggest NUM_REG regions in fit
+NUM_REG = 1 #6 # include biggest NUM_REG regions in fit
 
 
 filename = 'D:/SHG examples/16_33_15/16_33_15_corr.png' #sys.argv[1]
