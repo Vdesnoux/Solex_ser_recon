@@ -46,13 +46,13 @@ def UI_SerBrowse (WorkDir):
     sg.theme_button_color(('white', '#500000'))
     
     layout = [
-    [sg.Text('SER file name(s)', size=(20, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
+    [sg.Text('SER file name(s)', size=(15, 1)), sg.InputText(default_text='',size=(75,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
     [sg.Checkbox('Show graphics', default=False, key='-DISP-')],
     [sg.Checkbox('Save .fits files', default=False, key='-FIT-')],
-    [sg.Checkbox('Save CLAHE image only', default=False, key='-CLAHE_ONLY-')],
+    [sg.Checkbox('Save CLAHE.png only', default=False, key='-CLAHE_ONLY-')],
     [sg.Text('Y/X ratio (blank for auto)', size=(20,1)), sg.Input(default_text='', size=(8,1),key='-RATIO-')],
-    [sg.Text('Slant angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],
+    [sg.Text('Tilt angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],
     [sg.Text('Pixel offset',size=(20,1)),sg.Input(default_text='0',size=(8,1),key='-DX-',enable_events=True)],
     [sg.Button('OK'), sg.Cancel()]
     ] 
