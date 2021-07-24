@@ -29,7 +29,7 @@ Tilt angle: enter a specific tilt angle in degrees. Leave blank for auto-correct
 
 Pixel offset: offset in pixels from the minimum of the line to reconstruct the image on another wavelength (displaced from the central minimum).
 
-Geometry correction may fail under certain circumstances and the program will stop. In this case, enter Y/X ratio and Tilt angle manually (try 1, 0 initially).
+Geometry correction may fail under certain circumstances and the program will stop. In this case, enter the Y/X ratio and Tilt angle manually (try 1, 0 initially).
 
 If no spectral line can recognised in the SER file, the program will stop.
 
