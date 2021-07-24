@@ -2,6 +2,7 @@
 """
 @author: valerie desnoux
 with improvements by Andrew Smith
+Version 24 July 2021
 
 ------------------------------------------------------------------------
 
