@@ -33,9 +33,9 @@ Pixel offset: offset in pixels from the minimum of the line to reconstruct the i
 
 Geometry correction may fail under certain circumstances and the program will stop. In this case, enter the Y/X ratio and Tilt angle manually (try 1, 0 initially).
 
-For rapid processing during data acquisition, make sure "Show graphics" is off. Automatic geometry correction also takes additional time.
+For rapid processing during data acquisition, make sure "Show graphics" is off. Automatic geometry correction will also take some additional time.
 Moroever, if Y/X is set to 1, distortion due to inappropriate scanning speed vs frame rate can be recognised and optimised.
 Similarly, if Tilt is set to 0, instrument misalignment can be recognised and corrected.
 
-Geometry graphics windows can be killed by killed by pushing 'X'
-Composite results window should be killed by pushing any key on the keyboard
+Geometry graphics window can be killed by killed by pushing 'X'.
+Composite results window should be killed by pushing any key on the keyboard.
