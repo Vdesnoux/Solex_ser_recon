@@ -56,8 +56,8 @@ def UI_SerBrowse (WorkDir):
     layout = [
     [sg.Text('SER file name(s)', size=(20, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
-    [sg.Checkbox('Show images', default=False, key='-DISP-')],
-    [sg.Checkbox('Save .fit files', default=False, key='-FIT-'),sg.Checkbox('FITS (or FIT) file format', default=True, key='-FITS_FORMAT-')],
+    [sg.Checkbox('Show graphics', default=False, key='-DISP-')],
+    [sg.Checkbox('Save FITS files', default=False, key='-FIT-'),sg.Checkbox('.fits (or .fit) file format', default=True, key='-FITS_FORMAT-')],
     [sg.Checkbox('Save CLAHE.png image only', default=False, key='-CLAHE_ONLY-')],
     [sg.Text('Y/X ratio (blank for auto)', size=(20,1)), sg.Input(default_text='', size=(8,1),key='-RATIO-')],
     [sg.Text('Tilt angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],

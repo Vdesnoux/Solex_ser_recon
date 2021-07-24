@@ -40,7 +40,7 @@ def solex_proc(serfile, options):
     clearlog()
     #plt.gray()              #palette de gris si utilise matplotlib pour visu debug
     flag_display = options['flag_display']
-    logme('Using pixel shift: ' + str(options['shift']))
+    logme('Using pixel shift : ' + str(options['shift']))
     """
     ----------------------------------------------------------------------------
     Reconstuit l'image du disque a partir de l'image moyenne des trames et 
