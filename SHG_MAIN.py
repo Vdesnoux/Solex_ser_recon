@@ -95,8 +95,15 @@ if len(sys.argv)>1 : #lauch by clipLimit
             serfiles.append(file_)
     print('theses files are going to be processed : ', serfiles)
     print('with default values : shift %s, flag_display %s, ratio_fixe "%s", slant_fix "%s", save_fit %s, clahe_only %s' %(shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only) )
-            
-WorkDir=''
+
+# check for .ini file for working directory           
+try:
+    mydir_ini=os.path.dirname(sys.argv[0])+'/SHG.ini'
+    with open(mydir_ini, "r") as f1:   
+        param_init = f1.readlines()
+        WorkDir=param_init[0]
+except:
+    WorkDir=''
     
 # if no command line arguments, open GUI interface
 if len(serfiles)==0 : 
@@ -135,8 +142,13 @@ def do_work():
         except:
             print('erreur ouverture fichier : ',serfile)
             sys.exit()
-        
-            
+
+        # save working directory
+        try:
+            with open(mydir_ini, "w") as f1:
+                f1.writelines(WorkDir)
+        except:
+            print('ERROR: couldnt write file ' + mydir_ini)    
         
         # appel au module d'extraction, reconstruction et correction
         #
