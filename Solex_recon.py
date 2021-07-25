@@ -74,7 +74,7 @@ def solex_proc(serfile, options):
 
     
     #savefich=basefich+'_mean'
-    # Modification Jean-Francois: choice of the FITS or FIT file format
+
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(mean_img,header=hdr)
         DiskHDU.writeto(basefich+'_mean.fits', overwrite='True')
@@ -157,7 +157,7 @@ def solex_proc(serfile, options):
     hdr['NAXIS1']=iw # note: slightly dodgy, new width
    
     #sauve fichier disque reconstruit
-    # Modification Jean-Francois: choice of the FITS or FIT file format
+
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(Disk,header=hdr)
         DiskHDU.writeto(basefich+'_img.fits', overwrite='True')
@@ -216,7 +216,7 @@ def solex_proc(serfile, options):
         img[c-1:c,]=s
     
     #sauvegarde le fits
-    # Modification Jean-Francois: choice of the FITS or FIT file format
+
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(img,header=hdr)
         DiskHDU.writeto(basefich+'_corr.fits', overwrite='True')     
@@ -347,7 +347,7 @@ def solex_proc(serfile, options):
     BelleImage=np.divide(frame,flat)
     frame=np.array(BelleImage, dtype='uint16')
     # sauvegarde de l'image deflattée
-    # Modification Jean-Francois: choice of the FITS or FIT file format
+
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
         DiskHDU.writeto(basefich+'_flat.fits', overwrite='True')
@@ -369,7 +369,7 @@ def solex_proc(serfile, options):
     
     # sauvegarde en fits de l'image finale
     
-    # Modification Jean-Francois: choice of the FITS or FIT file format
+
     if options['save_fit']:
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
         DiskHDU.writeto(basefich+'_recon.fits', overwrite='True')
