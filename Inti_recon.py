@@ -1070,7 +1070,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     """
     img=frame
     
-    if not(flag_nobords) and abs(section)<0.1:
+    if not(flag_nobords) and abs(section)<0.2:  #threshold change to do not reject higly tilted scan
         # correction de slant uniquement si on voit les limbes droit/gauche
         # trouve les coordonnées y des bords du disque dont on a les x1 et x2 
         # pour avoir les coordonnées y du grand axe horizontal
