@@ -14,16 +14,16 @@ automatiquement
 """
 import math
 import numpy as np
-import cv2
+
 import os
 import sys
 import Solex_recon as sol
 from astropy.io import fits
 import cProfile
 import PySimpleGUI as sg
-
+import tkinter as tk
 import ctypes # Modification Jean-Francois: for reading the monitor size
-
+import cv2
 
 def UI_SerBrowse (WorkDir):
     """
@@ -237,11 +237,9 @@ def do_work():
             im_1 = cv2.hconcat([frame_contrasted, frame_contrasted2])
             im_2 = cv2.hconcat([frame_contrasted3, cc])
             im_3 = cv2.vconcat([im_1, im_2])
-
-            user32 = ctypes.windll.user32
-            screensize = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1) # Get screen size
+            screen = tk.Tk()
+            screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()   
             scale = min(screensize[0] / im_3.shape[1], screensize[1] / im_3.shape[0])
-
             cv2.namedWindow('Sun images', cv2.WINDOW_NORMAL)
             cv2.moveWindow('Sun images', 0, 0)
             cv2.resizeWindow('Sun images',int(im_3.shape[1] * scale), int(im_3.shape[0] * scale))
