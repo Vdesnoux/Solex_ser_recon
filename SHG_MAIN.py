@@ -21,7 +21,8 @@ import Solex_recon as sol
 from astropy.io import fits
 import cProfile
 import PySimpleGUI as sg
-
+import platform
+import tkinter as tk
 import ctypes # Modification Jean-Francois: for reading the monitor size
 
 
@@ -237,9 +238,13 @@ def do_work():
             im_1 = cv2.hconcat([frame_contrasted, frame_contrasted2])
             im_2 = cv2.hconcat([frame_contrasted3, cc])
             im_3 = cv2.vconcat([im_1, im_2])
-
-            user32 = ctypes.windll.user32
-            screensize = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1) # Get screen size
+            if platform.system()=='Windows' : 
+                user32 = ctypes.windll.user32
+                screensize = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1) # Get screen size
+            else : 
+                screen = tk.Tk()
+                screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()
+                
             scale = min(screensize[0] / im_3.shape[1], screensize[1] / im_3.shape[0])
 
             cv2.namedWindow('Sun images', cv2.WINDOW_NORMAL)
