@@ -1,35 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-Version 14 july 2021
-
-
+Version 24 July 2021
 @author: valerie desnoux
 with improvements by Andrew Smith
-
-
 Front end de traitements spectro helio de fichier ser
 - interface pour selectionner un ou plusieurs fichiers
 - appel au module solex_recon qui traite la sequence et genere les fichiers fits
 - propose avec openCV un affichage de l'image resultat ou pas
 - decalage en longueur d'onde avec Shift
-- ajout d'une zone pour entrer un ratio fixe. Si resteà zero alors il sera calculé
+- ajout d'une zone pour entrer un ratio fixe. Si reste à zero alors il sera calculé
 automatiquement
 - ajout de sauvegarde png _protus avec flag disk_display en dur
-
 """
-import cv2
-
 import math
 import numpy as np
-import PySimpleGUI as sg
-
+import cv2
 import os
 import sys
 import Solex_recon as sol
 from astropy.io import fits
 import cProfile
-#import time
+import PySimpleGUI as sg
 
+import ctypes # Modification Jean-Francois: for reading the monitor size
 
 
 def UI_SerBrowse (WorkDir):
@@ -53,13 +46,13 @@ def UI_SerBrowse (WorkDir):
     sg.theme_button_color(('white', '#500000'))
     
     layout = [
-    [sg.Text('SER file name(s)', size=(20, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
+    [sg.Text('SER file name(s)', size=(15, 1)), sg.InputText(default_text='',size=(75,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
-    [sg.Checkbox('Show images', default=False, key='-DISP-')],
-    [sg.Checkbox('Save .fit files', default=False, key='-FIT-')],
-    [sg.Checkbox('Save CLAHE image only', default=False, key='-CLAHE_ONLY-')],
+    [sg.Checkbox('Show graphics', default=False, key='-DISP-')],
+    [sg.Checkbox('Save .fits files', default=False, key='-FIT-')],
+    [sg.Checkbox('Save CLAHE.png only', default=False, key='-CLAHE_ONLY-')],
     [sg.Text('Y/X ratio (blank for auto)', size=(20,1)), sg.Input(default_text='', size=(8,1),key='-RATIO-')],
-    [sg.Text('Slant angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],
+    [sg.Text('Tilt angle (blank for auto)',size=(20,1)),sg.Input(default_text='',size=(8,1),key='-SLANT-',enable_events=True)],
     [sg.Text('Pixel offset',size=(20,1)),sg.Input(default_text='0',size=(8,1),key='-DX-',enable_events=True)],
     [sg.Button('OK'), sg.Cancel()]
     ] 
@@ -81,82 +74,45 @@ def UI_SerBrowse (WorkDir):
     FileNames=values['-FILE-']
     shift=values['-DX-']
     flag_display=values['-DISP-']
-    if values['-RATIO-'] == '':
-        ratio_fixe = 0
-    else:
-        ratio_fixe=float(values['-RATIO-'])
     
-    return FileNames, shift, flag_display, ratio_fixe, values['-SLANT-'], values['-FIT-'], values['-CLAHE_ONLY-']
+    
+    return FileNames, shift, flag_display, values['-RATIO-'], values['-SLANT-'], values['-FIT-'], values['-CLAHE_ONLY-']
 
 """
 -------------------------------------------------------------------------------------------
 le programme commence ici !
-
-Si version windows
-# recupere les parametres utilisateurs enregistrés lors de la session
-# precedente dans un fichier txt "pysolex.ini" qui va etre placé ici en dur
-# dans repertoire c:/py/ pour l'instant
-
-Si version mac
-#recupere les noms de fichiers par un input console
-#valeurs de flag_display, Shift et ratio_fixe sont en dur dans le programme
-
 --------------------------------------------------------------------------------------------
 """
-version_mac =False
-disk_display=False
-file_list = []
-if not(version_mac):
-    try:
-        with open('c:/py/pysolex.ini', "r") as f1:
-        
-            param_init = f1.readlines()
-            WorkDir=param_init[0]
-    except:
-        shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only = 0, False, 0, '0', True, False
-         #list of files to process
-        ##add a command line argument.
-        if len(sys.argv)>0 : #lauch by clipLimit
-            for file_ in sys.argv : 
-                if file_.split('.')[-1].upper()=='SER' : 
-                    file_list .append(file_)
-            print('theses files are going to be processed : ', file_list)
-            print('with default values : flag_display %s, ratio_fixe %s, slant_fix %s, save_fit %s, clahe_only %s' %(False, False, 0, True, False) )
+disk_display=True
+serfiles = []
+    
+shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only = 0, False, '', '', True, False
+# list of files to process
+## add a command line argument.
+if len(sys.argv)>1 : #lauch by clipLimit
+    for file_ in sys.argv[1:] : 
+        if file_.split('.')[-1].upper()=='SER' : 
+            serfiles.append(file_)
+    print('theses files are going to be processed : ', serfiles)
+    print('with default values : shift %s, flag_display %s, ratio_fixe "%s", slant_fix "%s", save_fit %s, clahe_only %s' %(shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only) )
             
-        WorkDir=''
-    if len(file_list)==0 : 
-        # Recupere paramatres de la boite de dialogue
-        serfiles, shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only =UI_SerBrowse(WorkDir)
-        serfiles=serfiles.split(';')
-    else : #launch with some ser file in argument)
-        serfiles = file_list
+WorkDir=''
     
-else:
-    WorkDir='/Users/macbuil/ocuments/pyser/'
-    serfiles=[]
-    print('nom du fichier sans extension, ou des fichiers sans extension séparés par une virgule')
-    basefichs=input('nom(s): ')
-    basefichs=basefichs.split(',')
-    for b in basefichs:
-        serfiles.append(WorkDir+b.strip()+'.ser')
-    # parametres en dur
-    flag_display=False
-    ratio_fixe=0
-    shift=0
-    
-    sys.exit()
-    
-#code commun mac ou windows
-#************************************************************************************************
+# if no command line arguments, open GUI interface
+if len(serfiles)==0 : 
+    serfiles, shift, flag_display, ratio_fixe, slant_fix, save_fit, clahe_only =UI_SerBrowse(WorkDir)
+    serfiles=serfiles.split(';')
+
+
 
 #pour gerer la tempo des affichages des images resultats dans cv2.waitKey
 #sit plusieurs fichiers à traiter
 
 def do_work():
     if len(serfiles)==1:
-        tempo=4000
+        tempo=60000 #4000
     else:
-        tempo=1
+        tempo=1000
         
     # boucle sur la liste des fichers
     for serfile in serfiles:
@@ -172,20 +128,14 @@ def do_work():
             print('erreur nom de fichier : ',serfile)
             sys.exit()
         
-        # met a jour le repertoire si on a changé dans le fichier ini
-        try:
-            with open('c:/py/pysolex.ini', "w") as f1:
-                f1.writelines(WorkDir)
-        except:
-            pass
-        
         # ouverture du fichier ser
         try:
             f=open(serfile, "rb")
+            f.close()
         except:
             print('erreur ouverture fichier : ',serfile)
             sys.exit()
-        f.close()
+        
             
         
         # appel au module d'extraction, reconstruction et correction
@@ -199,133 +149,104 @@ def do_work():
             print('invalid shift input: ', shift)
             shift=0
 
-        options = {'flag_display':flag_display, 'shift':shift, 'save_fit':save_fit}
-        if not ratio_fixe == 0:
-            options['ratio_fixe'] = ratio_fixe
+        options = {'flag_display':flag_display, 'shift':shift, 'save_fit':save_fit, 'tempo':tempo}
+        
+        if not ratio_fixe == '':
+            try:
+                options['ratio_fixe'] = float(ratio_fixe)
+            except:
+                print('invalid Y/X ratio input: ', ratio_fixe)
+        
         if not slant_fix == '':
             try:           
-                options['slant_fix'] = math.radians(float(slant_fix))
+                options['slant_fix'] = float(slant_fix)
             except:
-                print('invalid slant input: '+ slant_fix)
-                pass
+                print('invalid tilt input: '+ slant_fix)
+
         frame, header, cercle=sol.solex_proc(serfile,options)
+        print('circle = ' , cercle)
+
         base=os.path.basename(serfile)
         basefich=os.path.splitext(base)[0]
-       
         
-        ih=frame.shape[0]
-        newiw=frame.shape[1]
-        
-        
-        
-        # gere reduction image png
-        if ih>600:
-            sc=0.5
-            
-        # gere reduction image png
-        if ih>1900:
-            sc=0.4
-            
-        # gere reduction image png
-        if ih>2500:
-            sc=0.2
-
         flag_result_show = flag_display
-        if flag_result_show:       
-            cv2.namedWindow('sun0', cv2.WINDOW_NORMAL)
-            cv2.moveWindow('sun0', -10, 0)
-            cv2.resizeWindow('sun0', (int(newiw*sc), int(ih*sc)))
-            cv2.imshow('sun0',frame)
-            
-            
-            cv2.namedWindow('sun', cv2.WINDOW_NORMAL)
-            cv2.moveWindow('sun', 0, 0)
-            cv2.resizeWindow('sun', (int(newiw*sc), int(ih*sc)))
-            
-            cv2.namedWindow('sun2', cv2.WINDOW_NORMAL)
-            cv2.moveWindow('sun2', 200, 0)
-            cv2.resizeWindow('sun2', (int(newiw*sc), int(ih*sc)))
-            
-            if ratio_fixe==0:
-                cv2.namedWindow('sun3', cv2.WINDOW_NORMAL)
-                cv2.moveWindow('sun3', 400, 0)
-                cv2.resizeWindow('sun3', (int(newiw*sc), int(ih*sc)))
-
-            cv2.namedWindow('clahe', cv2.WINDOW_NORMAL)
-            cv2.moveWindow('clahe', 600, 0)
-            cv2.resizeWindow('clahe',(int(newiw*sc), int(ih*sc)))
         
         # create a CLAHE object (Arguments are optional)
-        #clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(5,5))
+        # clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(5,5))
         clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
         cl1 = clahe.apply(frame)
         
-        #image leger seuils
+        # image leger seuils
         frame1=np.copy(frame)
         Seuil_bas=np.percentile(frame, 25)
         Seuil_haut=np.percentile(frame,99.9999)
         frame1[frame1>Seuil_haut]=65000
-        #print('seuil bas', Seuil_bas)
-        #print('seuil haut', Seuil_haut)
+        print('Seuil bas       :', np.floor(Seuil_bas))
+        print('Seuil haut      :', np.floor(Seuil_haut))
         fc=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
         fc[fc<0]=0
         frame_contrasted=np.array(fc, dtype='uint16')
-
-
-        if flag_result_show:
-            cv2.imshow('sun',frame_contrasted)
-        #cv2.waitKey(0)
         
-        #image seuils serres 
+        # image seuils serres 
         frame1=np.copy(frame)
-        Seuil_haut=np.percentile(frame1,99.9999)
         Seuil_bas=(Seuil_haut*0.25)
-        #print('seuil bas HC', Seuil_bas)
-        #print('seuil haut HC', Seuil_haut)
+        Seuil_haut=np.percentile(frame1,99.9999)
+        print('Seuil bas HC    :', np.floor(Seuil_bas))
+        print('Seuil haut HC   :', np.floor(Seuil_haut))
         frame1[frame1>Seuil_haut]=65000
         fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
         fc2[fc2<0]=0
         frame_contrasted2=np.array(fc2, dtype='uint16')
-        if flag_result_show:
-            cv2.imshow('sun2',frame_contrasted2)
-            #cv2.waitKey(0)
         
-        #image seuils protus
+        # image seuils protus
         frame1=np.copy(frame)
-        Seuil_haut=np.percentile(frame1,99.9999)*0.18
         Seuil_bas=0
-        print('seuil bas protu', Seuil_bas)
-        print('seuil haut protu', Seuil_haut)
+        Seuil_haut=np.percentile(frame1,99.9999)*0.18        
+        print('Seuil bas protu :', np.floor(Seuil_bas))
+        print('Seuil haut protu:', np.floor(Seuil_haut))
         frame1[frame1>Seuil_haut]=Seuil_haut
         fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
         fc2[fc2<0]=0
         frame_contrasted3=np.array(fc2, dtype='uint16')
-        if ratio_fixe==0 and disk_display==True:
-            x0=cercle[0]
-            y0=cercle[1]-1
-            r=int(cercle[2]*0.5)+1
+        if not cercle == (-1, -1, -1) and disk_display==True:
+            x0=int(cercle[0])
+            y0=int(cercle[1])
+            r=int(cercle[2]) - 4
             frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1)
-        if flag_result_show:
-            cv2.imshow('sun3',frame_contrasted3)
-            #cv2.waitKey(0)
         
         Seuil_bas=np.percentile(cl1, 25)
         Seuil_haut=np.percentile(cl1,99.9999)*1.05
         cc=(cl1-Seuil_bas)*(65000/(Seuil_haut-Seuil_bas))
         cc[cc<0]=0
         cc=np.array(cc, dtype='uint16')
-        if flag_result_show:
-            cv2.imshow('clahe',cc)
-            cv2.waitKey(tempo)  #affiche 15s et continue
+
+        # sauvegarde en png de clahe
+        cv2.imwrite(basefich+'_clahe.png',cc)   # Modification Jean-Francois: placed before the IF for clear reading
         if not clahe_only:
-            #sauvegarde en png pour appliquer une colormap par autre script
+            # sauvegarde en png pour appliquer une colormap par autre script
             cv2.imwrite(basefich+'_disk.png',frame_contrasted)
-            #sauvegarde en png pour appliquer une colormap par autre script
+            # sauvegarde en png pour appliquer une colormap par autre script
             cv2.imwrite(basefich+'_diskHC.png',frame_contrasted2)
-            #sauvegarde en png pour appliquer une colormap par autre script
+            # sauvegarde en png pour appliquer une colormap par autre script
             cv2.imwrite(basefich+'_protus.png',frame_contrasted3)
-        #sauvegarde en png de clahe
-        cv2.imwrite(basefich+'_clahe.png',cc)
+        
+        # Modification Jean-Francois: the 4 images are concatenated together in 1 image => 'Sun images'
+        # The 'Sun images' is scaled for the monitor maximal dimension ... it is scaled to match the dimension of the monitor without 
+        # changing the Y/X scale of the images 
+        if flag_result_show:
+            im_1 = cv2.hconcat([frame_contrasted, frame_contrasted2])
+            im_2 = cv2.hconcat([frame_contrasted3, cc])
+            im_3 = cv2.vconcat([im_1, im_2])
+
+            user32 = ctypes.windll.user32
+            screensize = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1) # Get screen size
+            scale = min(screensize[0] / im_3.shape[1], screensize[1] / im_3.shape[0])
+
+            cv2.namedWindow('Sun images', cv2.WINDOW_NORMAL)
+            cv2.moveWindow('Sun images', 0, 0)
+            cv2.resizeWindow('Sun images',int(im_3.shape[1] * scale), int(im_3.shape[0] * scale))
+            cv2.imshow('Sun images',im_3)
+            cv2.waitKey(tempo)  # affiche et continue
         
         """
         #create colormap
@@ -351,10 +272,10 @@ def do_work():
         
         frame2=np.copy(frame)
         frame2=np.array(cl1, dtype='uint16')
-        #sauvegarde le fits
+        # sauvegarde le fits
         if options['save_fit']:
             DiskHDU=fits.PrimaryHDU(frame2,header)
-            DiskHDU.writeto(basefich+'_clahe.fit', overwrite='True')
+            DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
 
         cv2.destroyAllWindows()
 

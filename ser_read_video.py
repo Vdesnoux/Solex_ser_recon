@@ -71,7 +71,7 @@ def read_video_improved(serfile, fit, LineRecal, options):
         cv2.namedWindow('disk', cv2.WINDOW_NORMAL)
         FrameMax=rdr.FrameCount
         cv2.resizeWindow('disk', FrameMax//3, ih//3)
-        cv2.moveWindow('disk', 100, 0)
+        cv2.moveWindow('disk', 200, 0)
         #initialize le tableau qui va recevoir la raie spectrale de chaque trame
         Disk=np.zeros((ih,FrameMax), dtype='uint16')
         
@@ -87,7 +87,8 @@ def read_video_improved(serfile, fit, LineRecal, options):
     ind_l = (np.asarray(fit)[:, 0] + np.ones(ih) * (LineRecal + shift)).astype(int)
     
     #CLEAN if fitting goes too far
-    ind_l = np.where(ind_l<iw-1-shift, ind_l, iw-2-shift)
+    ind_l[ind_l < 0] = 0
+    ind_l[ind_l > iw - 2] = iw - 2
     ind_r = (ind_l + np.ones(ih)).astype(int)
     left_weights = np.ones(ih) - np.asarray(fit)[:, 1]
     right_weights = np.ones(ih) - left_weights
@@ -96,7 +97,7 @@ def read_video_improved(serfile, fit, LineRecal, options):
     print('reader num frames:', rdr.FrameCount)
     while rdr.has_frames():
         img = rdr.next_frame()               
-        if options['flag_display'] and rdr.FrameIndex %10 == 0 :
+        if options['flag_display'] and rdr.FrameIndex % 10 == 0 :
             cv2.imshow('image', img)
             if cv2.waitKey(1)==27:
                 cv2.destroyAllWindows()
@@ -109,7 +110,7 @@ def read_video_improved(serfile, fit, LineRecal, options):
         #ajoute au tableau disk 
         Disk[:,rdr.FrameIndex]=IntensiteRaie
         
-        if options['flag_display'] and rdr.FrameIndex %10 ==0:
+        if options['flag_display'] and rdr.FrameIndex % 10 ==0:
             cv2.imshow ('disk', Disk)
             if cv2.waitKey(1) == 27:                     # exit if Escape is hit
                 cv2.destroyAllWindows()    

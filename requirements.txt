@@ -5,4 +5,5 @@ astropy==4.2
 PySimpleGUI==4.38.0
 scipy
 matplotlib
-
+scikit-image
+lsq-ellipse
