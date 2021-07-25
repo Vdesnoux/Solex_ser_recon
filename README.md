@@ -23,7 +23,7 @@ If the "Save .fits files" box is checked, the following files will be stored in 
 - xx_recon.fits: final image, corrected for tilt
 - xx_clahe.fits: final image, with Contrast Limited Adaptive Histogram Equalization
 
-If the "Save CLAHE image only" box is checked, then only the final PNG image with Contrast Limited Adaptive Histogram Equalization will be saved.
+If the "Save CLAHE.png only" box is checked, then only the final PNG image with Contrast Limited Adaptive Histogram Equalization will be saved.
 
 Y/X ratio: enter a specific Y/X ratio, if this is known. Leave blank for auto-correction. Enter 1 if no correction desired.
 
