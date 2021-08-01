@@ -174,9 +174,11 @@ def do_work():
                 options['slant_fix'] = float(slant_fix)
             except:
                 print('invalid tilt input: '+ slant_fix)
-
+        #try : 
         frame, header, cercle=sol.solex_proc(serfile,options)
+    
         print('circle = ' , cercle)
+    
 
         base=os.path.basename(serfile)
         basefich=os.path.splitext(base)[0]
@@ -286,8 +288,9 @@ def do_work():
         if options['save_fit']:
             DiskHDU=fits.PrimaryHDU(frame2,header)
             DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
-
-        cv2.destroyAllWindows()
+        #except :
+            #print('file corrupted')
+            #cv2.destroyAllWindows()
 
 if 0:        
     cProfile.run('do_work()', sort='cumtime')

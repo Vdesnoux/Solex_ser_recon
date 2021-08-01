@@ -21,35 +21,40 @@ from matplotlib.patches import Ellipse
 NUM_REG = 1 #6 # include biggest NUM_REG regions in fit
 
 
-def dofit(X):
-    X1 = X[:, 0]
-    X2 = X[:, 1]
-    reg = LsqEllipse().fit(X)
+def dofit(points):
+    """IN : numpy points coordinates
+    OUT : center, width, height, phi, fit informations
+    """
+    reg = LsqEllipse().fit(points)
     center, width, height, phi = reg.as_parameters()
     return center, width, height, phi, reg.return_fit(n_points=100)
 
 
-def two_step(X):
-    center, width, height, phi, _ = dofit(X)
+def two_step(points):
+    """Launch twice an ellipse fit. One with all edge points, one with only tresholded values.
+    IN : numpy array of edge points.
+    OUT : np.array(center), height, phi, ratio, points_tresholded, ellipse_points
+    """
+    center, width, height, phi, _ = dofit(points)
     mat = np.array([np.array([np.cos(phi), np.sin(phi)])/width, np.array([-np.sin(phi), np.cos(phi)])/height])
-    Xr = mat @ (X - np.array(center)).T
-    X1r = Xr[0, :]
-    X2r = Xr[1, :]   
+    Xr = mat @ (points - np.array(center)).T
     values = np.linalg.norm(Xr, axis = 0) - 1
     #print(np.mean(values), np.std(values), max(values), min(values))
     anomaly_threshold = max(values)
-    X = X[values > -max(values)]
-    center, width, height, phi, ellipse_points = dofit(X)
+    points_tresholded = points[values > -max(values)]
+    center, width, height, phi, ellipse_points = dofit(points_tresholded)
     mat = np.array([np.array([np.cos(phi), np.sin(phi)])/width, np.array([-np.sin(phi), np.cos(phi)])/height])
-    Xr = mat @ (X - np.array(center)).T
-    X1r = Xr[0, :]
-    X2r = Xr[1, :]    
+    Xr = mat @ (points_tresholded - np.array(center)).T
     values = np.linalg.norm(Xr, axis = 0) - 1
     #print(np.mean(values), np.std(values), max(values), min(values))
     ratio = width / height
-    return np.array(center), height, phi, ratio, X, ellipse_points
+    return np.array(center), height, phi, ratio, points_tresholded, ellipse_points
 
 def correct_image(image, phi, ratio, center):
+    """correct image geometry. TODO : a rotation is made instead of a tilt
+    IN : numpy array, float, float, numpy array (2 elements)
+    OUT : numpy array, numpy array (2 elements)
+    """
     logme('Y/X ratio : ' + "{:.3f}".format(ratio))
     logme('Tilt angle : ' + "{:.3f}".format(math.degrees(phi)) + " degrees")
     mat = np.array([[np.cos(phi), np.sin(phi)], [-np.sin(phi), np.cos(phi)]]) @ np.array([[1/ratio, 0], [0, 1]])
@@ -68,6 +73,10 @@ def correct_image(image, phi, ratio, center):
     return corrected_img, new_center
 
 def get_edge_list(image, sigma = 2):
+    """"from a picture, return a numpy array containing edge points
+    IN : frame as numpy array, integer
+    OUT : numpy array
+    """
     if sigma <= 0:
         logme('ERROR: could not find any edges')
         return image, (-1, -1, -1)
@@ -108,24 +117,21 @@ def get_edge_list(image, sigma = 2):
     return np.array([X, raw_X], dtype=object) 
 
 def ellipse_to_circle(image, options):
+    """from an entire sun frame, compute ellipse fit and return a circularise picture and center coordinates
+    IN : numpy array, dictionnayr of options
+    OUt :numpy array, numpy array (2 elements)
+    """
     image = image / 65536 # assume 16 bit
     factor = 4
     processed = get_edge_list(downscale_local_mean(image, (factor,factor))) * factor# down-scaled, then upscaled back
     X, raw_X = processed[0], processed[1]
     center, height, phi, ratio, X_f, ellipse_points = two_step(X)
     center = np.array([center[1], center[0]])
-    #plt.imshow(image)
-    #plt.plot([center[0]], [center[1]], 'ro')
-    #plt.show()
-    fix_img, center = correct_image(image, phi, ratio, center)
     
-    #plt.imshow(fix_img)
-    #plt.plot([center[0]], [center[1]], 'ro')
-    #plt.show()
+    fix_img, center = correct_image(image, phi, ratio, center)
     
     if options['flag_display']:
         fig, ax = plt.subplots(ncols=2, nrows = 2)
-
         ax[0][0].imshow(image, cmap=plt.cm.gray)
         ax[0][0].set_title('uncorrected image', fontsize = 11)
         ax[0][1].plot(raw_X[:, 1], image.shape[0] - raw_X[:, 0], 'ro', label = 'edge detection')
@@ -151,3 +157,5 @@ def ellipse_to_circle(image, options):
   
     circle = (center[0], center[1], height*ratio) # radius == height*ratio
     return fix_img, circle
+
+    
