@@ -1,20 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-@author: valerie desnoux
+@author: Valerie Desnoux
 with improvements by Andrew Smith
-Version 24 July 2021
+contributors: Jean-Francois Pittet, Jean-Baptiste Butet, Pascal Berteau, Matt Considine
+Version 1 August 2021
 
 ------------------------------------------------------------------------
+reconstruction on an image from the deviations between the minimum of the line and a reference line
 
-modif seuil dans section flat sur NewImg pour eviter de clamper à background 1000
-mise en commentaire d'un ajout d'une detection des bords du disque solaire et d'un ajustement ce cercle apres
-la circularisation en calculant le rayon a partir de la hauteur du disque
-------------------------------------------------------------------------
+calcul sur une image des ecarts simples entre min de la raie et une ligne de reference
+-------------------------------------------------------------------------
 
------------------------------------------------------------------------------
-calcul sur une image des ecarts simples entre min de la raie
-et une ligne de reference
------------------------------------------------------------------------------
 """
 
 from solex_util import *
@@ -113,13 +109,11 @@ def compute_mean_return_fit(serfile, options, LineRecal = 1):
     """
     ----------------------------------------------------------------------------
     Reconstuit l'image du disque a partir de l'image moyenne des trames et 
-    des trames extraite du fichier ser
-    avec un fit polynomial
+    des trames extraite du fichier ser avec un fit polynomial
     Corrige de mauvaises lignes et transversallium
  
     basefich: nom du fichier de base de la video sans extension, sans repertoire
-    shift: ecart en pixel par rapport au centre de la raie pour explorer 
-    longueur d'onde decalée
+    shift: ecart en pixel par rapport au centre de la raie pour explorer longueur d'onde decalée
     ----------------------------------------------------------------------------
     """
     flag_display = options['flag_display']
