@@ -1,3 +1,9 @@
+"""
+@author: Valerie Desnoux
+with improvements by Andrew Smith
+Version 1 August 2021
+
+"""
 from solex_util import *
 
 import skimage
