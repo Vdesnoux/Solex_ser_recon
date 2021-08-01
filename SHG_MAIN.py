@@ -1,16 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-Version 24 July 2021
-@author: valerie desnoux
+@author: Valerie Desnoux
 with improvements by Andrew Smith
+contributors: Jean-Francois Pittet, Jean-Baptiste Butet, Pascal Berteau, Matt Considine
+Version 1 August 2021
+
+--------------------------------------------------------------
+Front end of spectroheliograph processing of SER files
+- interface able to select one or more files
+- call to the solex_recon module which processes the sequence and generates the FITS files
+- offers with openCV a display of the resultant image
+- wavelength selection with the pixel shift function
+- geometric correction with a fixed Y/X ratio
+- if Y/X remains at zero, then this will be calculated automatically
+--------------------------------------------------------------
 Front end de traitements spectro helio de fichier ser
 - interface pour selectionner un ou plusieurs fichiers
 - appel au module solex_recon qui traite la sequence et genere les fichiers fits
 - propose avec openCV un affichage de l'image resultat ou pas
 - decalage en longueur d'onde avec Shift
-- ajout d'une zone pour entrer un ratio fixe. Si reste à zero alors il sera calculé
-automatiquement
+- ajout d'une zone pour entrer un ratio fixe. Si reste à zero alors il sera calculé automatiquement
 - ajout de sauvegarde png _protus avec flag disk_display en dur
+---------------------------------------------------------------
+
 """
 import math
 import numpy as np
@@ -134,7 +146,7 @@ if len(sys.argv)>1 :
             if argument.split('.')[-1].upper()=='SER' : 
                 serfiles.append(argument)
     print('theses files are going to be processed : ', serfiles)
-print('Processing will begin with values : \n shift %s, flag_display %s, "%s", slant_fix "%s", save_fit %s, clahe_only %s, disk_display %s' %(options['shift'], options['flag_display'], options['ratio_fixe'], options['slant_fix'], options['save_fit'], options['clahe_only'], options['disk_display']) )
+#print('Processing will begin with values : \n shift %s, flag_display %s, "%s", slant_fix "%s", save_fit %s, clahe_only %s, disk_display %s' %(options['shift'], options['flag_display'], options['ratio_fixe'], options['slant_fix'], options['save_fit'], options['clahe_only'], options['disk_display']) )
 
 # check for .ini file for working directory           
 try:
