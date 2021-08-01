@@ -396,12 +396,12 @@ def solex_proc(serfile, options):
     We now apply ellipse_fit to apply the geometric correction
 
     """
-    if not 'ratio_fixe' in options and not 'slant_fix' in options:
+    if options['ratio_fixe'] is None and options['slant_fix'] is None:
         frame_circularized, cercle = ellipse_to_circle(frame_flatted, options)
     else:
-        ratio = options['ratio_fixe'] if 'ratio_fixe' in options else 1.0
-        phi = math.radians(options['slant_fix']) if 'slant_fix' in options else 0.0
-        frame_circularized, cercle = correct_image(frame_flatted / 65536, phi, ratio), (-1, -1, -1) # Note that we assume 16-bit
+        ratio = options['ratio_fixe']             if not options['ratio_fixe'] is None else 1.0
+        phi = math.radians(options['slant_fix'])  if not options['slant_fix'] is None else 0.0
+        frame_circularized, cercle = correct_image(frame_flatted / 65536, phi, ratio, np.array([-1.0, -1.0]))[0], (-1, -1, -1) # Note that we assume 16-bit
 
     # sauvegarde en fits de l'image finale
     

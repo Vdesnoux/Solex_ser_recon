@@ -24,7 +24,7 @@ import PySimpleGUI as sg
 import tkinter as tk
 import ctypes # Modification Jean-Francois: for reading the monitor size
 import cv2
-
+import traceback
 
 def usage():
     usage_ = "SHG_MAIN.py [-dcfp] [file(s) to treat]\n"
@@ -97,7 +97,7 @@ def UI_SerBrowse (WorkDir):
     FileNames=values['-FILE-']
     
     
-    return FileNames, values['-DX-'], values['-DISP-'], 0 if values['-RATIO-']=='' else values['-RATIO-'] , 0 if values['-SLANT-']=='' else values['-SLANT-'], values['-FIT-'], values['-CLAHE_ONLY-']
+    return FileNames, values['-DX-'], values['-DISP-'], None if values['-RATIO-']=='' else values['-RATIO-'] , None if values['-SLANT-']=='' else values['-SLANT-'], values['-FIT-'], values['-CLAHE_ONLY-']
 
 """
 -------------------------------------------------------------------------------------------
@@ -110,8 +110,8 @@ serfiles = []
 options = {    
 'shift':0,
 'flag_display':False,
-'ratio_fixe' : 0,
-'slant_fix' : 0 ,
+'ratio_fixe' : None,
+'slant_fix' : None ,
 'save_fit' : True,
 'clahe_only' : False,
 'disk_display' : True #protus
@@ -134,7 +134,7 @@ if len(sys.argv)>1 :
             if argument.split('.')[-1].upper()=='SER' : 
                 serfiles.append(argument)
     print('theses files are going to be processed : ', serfiles)
-print('Processing will begin with values : \n shift %s, flag_display %s, ratio_fixe "%s", slant_fix "%s", save_fit %s, clahe_only %s, disk_display %s' %(options['shift'], options['flag_display'], options['ratio_fixe'], options['slant_fix'], options['save_fit'], options['clahe_only'], options['disk_display']) )
+print('Processing will begin with values : \n shift %s, flag_display %s, "%s", slant_fix "%s", save_fit %s, clahe_only %s, disk_display %s' %(options['shift'], options['flag_display'], options['ratio_fixe'], options['slant_fix'], options['save_fit'], options['clahe_only'], options['disk_display']) )
 
 # check for .ini file for working directory           
 try:
@@ -156,12 +156,12 @@ if len(serfiles)==0 :
         
     options['flag_display'] = flag_display
     try : 
-        options['ratio_fixe'] = float(ratio_fixe)
+        options['ratio_fixe'] = float(ratio_fixe) if not ratio_fixe is None else None
     except ValueError : 
         print('invalid ratio_fixe value')
         sys.exit()
     try : 
-        options['slant_fix'] = float(slant_fix)
+        options['slant_fix'] = float(slant_fix) if not slant_fix is None else None
     except ValueError : 
         print('invalid slant_fix value')
         sys.exit()
@@ -290,13 +290,15 @@ def do_work():
                 im_2 = cv2.hconcat([frame_contrasted3, cc])
                 im_3 = cv2.vconcat([im_1, im_2])
                 screen = tk.Tk()
-                screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()   
+                screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()
+                screen.destroy()
                 scale = min(screensize[0] / im_3.shape[1], screensize[1] / im_3.shape[0])
                 cv2.namedWindow('Sun images', cv2.WINDOW_NORMAL)
                 cv2.moveWindow('Sun images', 0, 0)
                 cv2.resizeWindow('Sun images',int(im_3.shape[1] * scale), int(im_3.shape[0] * scale))
                 cv2.imshow('Sun images',im_3)
                 cv2.waitKey(options['tempo'])  # affiche et continue
+                cv2.destroyAllWindows()
             
             """
             #create colormap
@@ -325,7 +327,8 @@ def do_work():
                 DiskHDU=fits.PrimaryHDU(frame2,header)
                 DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
         except :
-            print('treatment collapse')
+            print('ERROR ENCOUNTERED')
+            traceback.print_exc()
             cv2.destroyAllWindows()
 
 
