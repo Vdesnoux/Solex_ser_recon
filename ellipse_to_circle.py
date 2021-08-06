@@ -1,7 +1,6 @@
 """
-@author: Valerie Desnoux
-with improvements by Andrew Smith
-Version 1 August 2021
+@author: Andrew Smith
+Version 6 August 2021
 
 """
 from solex_util import *
@@ -27,12 +26,19 @@ from matplotlib.patches import Ellipse
 NUM_REG = 1 #6 # include biggest NUM_REG regions in fit
 
 
-def get_matrix(phi, r):
+def rot(x):
+    return np.array([[np.cos(x), np.sin(x)], [-np.sin(x), np.cos(x)]])
+
+def get_correction_matrix(phi, r):
     """
-    IN: phi, ellipse axes ratio
+    IN: phi, ellipse axes ratio (height / width)
     OUT: correction matrix
     """
-    return np.array([[np.cos(phi), np.sin(phi)], [-np.sin(phi), np.cos(phi)]]) @ np.array([[1/r, 0], [0, 1]]) @  np.array([[np.cos(phi), -np.sin(phi)], [np.sin(phi), np.cos(phi)]])
+    stretch_matrix = rot(phi) @ np.array([[r, 0], [0, 1]]) @  rot(-phi)
+    theta = np.arctan(-stretch_matrix[0, 1] / stretch_matrix[1, 1]) 
+    unrotation_matrix = rot(theta)
+    correction_matrix = unrotation_matrix @ stretch_matrix
+    return np.linalg.inv(correction_matrix), theta
 
 def dofit(points):
     """IN : numpy points coordinates
@@ -49,15 +55,15 @@ def two_step(points):
     OUT : np.array(center), height, phi, ratio, points_tresholded, ellipse_points
     """
     center, width, height, phi, _ = dofit(points)
-    mat = get_matrix(phi, height / width) * height
-    Xr = mat @ (points - np.array(center)).T
+    mat, _ = get_correction_matrix(phi, height / width)
+    Xr = mat @ (points - np.array(center)).T * height
     values = np.linalg.norm(Xr, axis = 0) - 1
     #print(np.mean(values), np.std(values), max(values), min(values))
     anomaly_threshold = max(values)
     points_tresholded = points[values > -max(values)]
     center, width, height, phi, ellipse_points = dofit(points_tresholded)
-    mat = get_matrix(phi, height / width) * height
-    Xr = mat @ (points_tresholded - np.array(center)).T
+    mat, _ = get_correction_matrix(phi, height / width)
+    Xr = mat @ (points_tresholded - np.array(center)).T * height
     values = np.linalg.norm(Xr, axis = 0) - 1
     #print(np.mean(values), np.std(values), max(values), min(values))
     ratio = width / height
@@ -70,8 +76,11 @@ def correct_image(image, phi, ratio, center):
     """
     logme('Y/X ratio : ' + "{:.3f}".format(ratio))
     logme('Tilt angle : ' + "{:.3f}".format(math.degrees(phi)) + " degrees")
-    mat = get_matrix(phi, ratio)
+    mat, theta = get_correction_matrix(phi, ratio)
+    print('unrotation angle theta = ' + "{:.3f}".format(math.degrees(theta)) + " degrees")
+    np.set_printoptions(suppress=True)
     logme('Linear transform correction matrix: \n' + str(mat))
+    np.set_printoptions(suppress=False)
     mat3 = np.zeros((3, 3))
     mat3[:2, :2] = mat
     mat3[2, 2] = 1
