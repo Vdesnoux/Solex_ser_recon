@@ -228,7 +228,7 @@ def do_work():
         try : 
             frame, header, cercle=sol.solex_proc(serfile,options)       
         
-            print('circle = ' , cercle)
+            print('circle (x, y, r) = ' , cercle)
 
             base=os.path.basename(serfile)
             basefich=os.path.splitext(base)[0]
