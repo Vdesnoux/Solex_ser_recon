@@ -95,10 +95,23 @@ def correct_image(image, phi, ratio, center):
     new_center = (np.linalg.inv(mat) @ center.T).T - np.array([np.min(new_corners[:, 0]), np.min(new_corners[:, 1])])
     return corrected_img, new_center
 
+def get_flood_image(image):
+    """ return an image, where all the pixels brighter than the average
+    are made saturated, and all those below average are zeroed.
+    IN: original image
+    OUT: modified image
+    TODO: simplify this function?
+    """
+    thresh = np.sum(image) / (image.shape[0] * image.shape[1])
+    image[image < thresh] = 0
+    image[image >= thresh] = 65000
+    return image
+
 def get_edge_list(image, sigma = 2):
-    """"from a picture, return a numpy array containing edge points
+    """from a picture, return a numpy array containing edge points
     IN : frame as numpy array, integer
     OUT : numpy array
+    TODO: simplify this function?
     """
     if sigma <= 0:
         logme('ERROR: could not find any edges')
@@ -107,6 +120,7 @@ def get_edge_list(image, sigma = 2):
     low_threshold = np.median(cv2.blur(image, ksize=(5, 5))) / 10
     high_threshold = low_threshold*1.5
     print('using thresholds:', low_threshold, high_threshold)
+    image = get_flood_image(image)
     edges = skimage.feature.canny(
         image=image,
         sigma=sigma,
