@@ -14,6 +14,8 @@ Front end de traitements spectro helio de fichier ser
 automatiquement
 - ajout de sauvegarde png _protus avec flag disk_display en dur
 
+
+
 Version 16 juillet 2021
 - remplacement des methodes des limbes par fit_ellipse
 - modification code avec code de Doug & Andrew Smith pour acceleration stupefiante
@@ -24,6 +26,8 @@ Version 16 juillet 2021
 
 To be noted... image fits data are the image pixels value, no change of dynamic, no thresholding. Only png images are thresholded.
 Black disk is a python graphic overlay, not burned into images. Circle data are logged for ISIS processing.
+
+
 """
 import numpy as np
 import cv2
@@ -60,7 +64,7 @@ def UI_SerBrowse (WorkDir):
     layout = [
     [sg.Text('Nom du fichier', size=(15, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
-    #[sg.Checkbox('Affiche reconstruction ', default=False, key='-DISP-')],
+    [sg.Checkbox('Affiche reconstruction ', default=False, key='-DISP-')],
     [sg.Checkbox('Affiche disque noir sur image protuberances', default=True, key='-DISK-')],
     [sg.Checkbox('Sauve uniquement fits _recon et _clahe ', default=True, key='-SFIT-')],
     [sg.Text('Ratio SY/SX (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-RATIO-')],
@@ -87,8 +91,8 @@ def UI_SerBrowse (WorkDir):
     FileNames=values['-FILE-']
     Shift=values['-DX-']
     
-    #flag_display=values['-DISP-']
-    flag_display=False
+    flag_display=values['-DISP-']
+    #flag_display=False
     ratio_fixe=float(values['-RATIO-'])
     disk_display=values['-DISK-']
     sfit_onlyfinal=values['-SFIT-']
@@ -153,7 +157,7 @@ else: #version mac
 if len(serfiles)==1:
     tempo=60000 #tempo 60 secondes, pour no tempo mettre tempo=0 et faire enter pour terminer
 else:
-    tempo=1
+    tempo=1000 #temp 1 sec
     
 # boucle sur la liste des fichers
 for serfile in serfiles:
@@ -290,7 +294,7 @@ for serfile in serfiles:
     fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
     fc2[fc2<0]=0
     frame_contrasted3=np.array(fc2, dtype='uint16')
-    if disk_display==True:
+    if disk_display==True and cercle[0]!=0:
         x0=cercle[0]
         y0=cercle[1]
         wi=cercle[2]-5
