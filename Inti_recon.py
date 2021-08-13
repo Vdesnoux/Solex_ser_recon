@@ -125,7 +125,6 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     logme('ser date UTC :' + dateSer.strftime('"%Y-%m-%dT%H:%M:%S.%f7%z"'))
 
     
-    sys.exit()
     #cv2.namedWindow('Ser', cv2.WINDOW_NORMAL)
     #cv2.resizeWindow('Ser', Width, Height)
     #cv2.moveWindow('Ser', 100, 0)
@@ -418,10 +417,11 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     l_col=np.where(hcol!=0)
     listcol=l_col[0]
     
-
+    origimg=np.copy(img) # as suggested by Matt considine 
+    
     # correction de lignes par filtrage median 13 lignes, empririque
     for c in listcol:
-        m=img[c-7:c+6,]
+        m=origimg[c-7:c+6,] #now refer to original image 
         s=np.median(m,0)
         img[c-1:c,]=s
     
