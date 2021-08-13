@@ -16,6 +16,11 @@ from matplotlib.patches import Ellipse
 
 mylog=[]
 
+def SER_time_seconds(h):
+    timestamp_1970 = int(621355967998300000) - int(1e7*(4*60*60-0.17))
+    s=float(h-timestamp_1970)/1e7 # convert to seconds
+    return s # number of seconds from 0001 to 1970
+
 def clearlog():
     mylog.clear()
 

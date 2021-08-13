@@ -75,6 +75,7 @@ from scipy.signal import savgol_filter
 import cv2
 import sys
 import math
+from datetime import datetime
 
 from Inti_functions import *
 from serfilesreader.serfilesreader import Serfile
@@ -115,13 +116,16 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     FrameCount = scan.getLength()    #      return number of frame in SER file.
     Width = scan.getWidth()          #      return width of a frame
     Height = scan.getHeight()        #      return height of a frame
-    dateSer = scan.getHeader()['DateTimeUTC']  
+    #dateSer = scan.getHeader()['DateTimeUTC']  
     logme (serfile)
     logme ('ser frame width, height : ' + str(Width)+','+str(Height))
     logme ('ser number of frame : '+str( FrameCount))
-    logme ('ser date : '+str(dateSer))
+    #logme ('ser date : '+str(dateSer))
+    dateSer=datetime.fromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
+    logme('ser date UTC :' + dateSer.strftime('"%Y-%m-%dT%H:%M:%S.%f7%z"'))
+
     
-    
+    sys.exit()
     #cv2.namedWindow('Ser', cv2.WINDOW_NORMAL)
     #cv2.resizeWindow('Ser', Width, Height)
     #cv2.moveWindow('Ser', 100, 0)
