@@ -137,7 +137,7 @@ def detect_y_of_x (img, x1,x2):
     return y_x1,y_x2
 
 def circularise (img,iw,ih,ratio_fixe): #methode des limbes
-    print()
+
     y1,y2=detect_bord (img, axis=1,offset=5)    # bords verticaux
     x1,x2=detect_bord (img, axis=0,offset=5)    # bords horizontaux
     logme('Position X des limbes droit et gauche x1, x2 : '+str(x1)+' '+str(x2))
@@ -288,7 +288,7 @@ def detect_edge (myimg,zexcl,disp_log):
 def fit_ellipse (myimg,X,disp_log):
     
     debug_graphics=False
-    disp_log=False
+    #disp_log=True
         
     EllipseFit=[]
     reg = el.LsqEllipse().fit(X)

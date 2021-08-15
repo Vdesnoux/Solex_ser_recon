@@ -566,7 +566,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     
     img2=np.copy(frame)
     EllipseFit=[]
-    disp_log=True
+
 
     if float(ang_tilt)==0:
         
@@ -576,8 +576,8 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         
         # methode fit ellipse pour calcul de tilt
         # zone d'exclusion des points contours zexcl en pourcentage de la hauteur image 
-        X = detect_edge (img2, zexcl=0.1, disp_log=disp_log)
-        EllipseFit,XE=fit_ellipse(img2, X,disp_log)
+        X = detect_edge (img2, zexcl=0.1, disp_log=True)
+        EllipseFit,XE=fit_ellipse(img2, X,disp_log=True)
 
     
     if not(flag_nobords):
@@ -678,8 +678,8 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         #flag_nobords=False
         #toprint='Position Y des limbes droit et gauche x1, x2 : '+str(y_x1)+' '+str(y_x2)
         #print(toprint)
-        X = detect_edge (img2, zexcl=0.1,disp_log=disp_log)
-        EllipseFit,XE=fit_ellipse(img2, X,disp_log)
+        X = detect_edge (img2, zexcl=0.1,disp_log=False)
+        EllipseFit,XE=fit_ellipse(img2, X,disp_log=False)
         
         ratio=EllipseFit[2]/EllipseFit[1]
         logme('Scaling SY/SX : '+"{:+.2f}".format(ratio))
@@ -707,8 +707,8 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         # fit ellipse pour denier check
         # zone d'exclusion des points contours zexcl en pourcentage de la hauteur image 
 
-        X = detect_edge (frame, zexcl=0.1, disp_log=disp_log)
-        EllipseFit,XE=fit_ellipse(frame, X, disp_log)
+        X = detect_edge (frame, zexcl=0.1, disp_log=False)
+        EllipseFit,XE=fit_ellipse(frame, X, disp_log=False)
        
         ratio=EllipseFit[2]/EllipseFit[1]
         

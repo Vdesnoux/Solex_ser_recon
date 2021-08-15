@@ -187,8 +187,9 @@ for serfile in serfiles:
     
     
     # my screensize is 1536x864 - harcoded as tk.TK() produces an error in spyder
-    screensizeH = (864-50) - (3*lw) 
-    screensizeW = (1536)-(3*tw)
+    # plus petit for speed up
+    screensizeH = (800-50) - (3*lw) 
+    screensizeW = (1200)-(3*tw)
     
     # gere reduction image png
     nw = screensizeW/newiw
