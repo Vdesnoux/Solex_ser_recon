@@ -716,8 +716,8 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
             print('ratio iteration2 :', ratio)
             NewImg, newiw=circularise2(frame,newiw,ih,ratio)
             frame=np.array(NewImg, dtype='uint16')
-            X= detect_edge (frame, zexcl=0.1, disp_log=disp_log)
-            EllipseFit,XE=fit_ellipse(frame, X, disp_log)
+            X= detect_edge (frame, zexcl=0.1, disp_log=False)
+            EllipseFit,XE=fit_ellipse(frame, X, disp_log=False)
           
         
         xc=int(EllipseFit[0][0])
