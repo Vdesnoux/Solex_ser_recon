@@ -7,12 +7,13 @@ Version 20 mai 2021
 
 Front end de traitements spectro helio de fichier ser
 - interface pour selectionner un ou plusieurs fichiers
-- appel au module solex_recon qui traite la sequence et genere les fichiers fits
-- propose avec openCV un affichage de l'image resultat ou pas
+- appel au module inti_recon qui traite la sequence et genere les fichiers fits
 - decalage en longueur d'onde avec Shift
-- ajout d'une zone pour entrer un ratio fixe. Si resteà zero alors il sera calculé
+- ajout d'une zone pour entrer un ratio fixe et un angle de tilt fixe. Si reste à zero alors il sera calculé
 automatiquement
-- ajout de sauvegarde png _protus avec flag disk_display en dur
+- sauvegarde fichier avec pixel shift in filename if shift<>0
+
+
 
 Version 16 juillet 2021
 - remplacement des methodes des limbes par fit_ellipse
@@ -24,6 +25,11 @@ Version 16 juillet 2021
 
 To be noted... image fits data are the image pixels value, no change of dynamic, no thresholding. Only png images are thresholded.
 Black disk is a python graphic overlay, not burned into images. Circle data are logged for ISIS processing.
+
+Version 11 aout 2021
+- suppression des flags dans la GUI pour simplification
+- ajout image de summary from JF Pitet et gestion screen tk from JB Butet
+
 """
 import numpy as np
 import cv2
@@ -31,6 +37,7 @@ import os
 import sys
 import Inti_recon as sol
 from astropy.io import fits
+import tkinter as tk
 
 
 #import time
@@ -61,8 +68,8 @@ def UI_SerBrowse (WorkDir):
     [sg.Text('Nom du fichier', size=(15, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
     #[sg.Checkbox('Affiche reconstruction ', default=False, key='-DISP-')],
-    [sg.Checkbox('Affiche disque noir sur image protuberances', default=True, key='-DISK-')],
-    [sg.Checkbox('Sauve uniquement fits _recon et _clahe ', default=True, key='-SFIT-')],
+    #[sg.Checkbox('Affiche disque noir sur image protuberances', default=True, key='-DISK-')],
+    #[sg.Checkbox('Sauve uniquement fits _recon et _clahe ', default=True, key='-SFIT-')],
     [sg.Text('Ratio SY/SX (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-RATIO-')],
     [sg.Text('Angle Tilt en degrés (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-TILT-')],
     [sg.Text('Decalage pixel',size=(15,1)),sg.Input(default_text='0',size=(5,1),key='-DX-',enable_events=True)],  
@@ -90,74 +97,47 @@ def UI_SerBrowse (WorkDir):
     #flag_display=values['-DISP-']
     flag_display=False
     ratio_fixe=float(values['-RATIO-'])
-    disk_display=values['-DISK-']
-    sfit_onlyfinal=values['-SFIT-']
+    #disk_display=values['-DISK-']
+    disk_display=True
+    #sfit_onlyfinal=values['-SFIT-']
+    sfit_onlyfinal=False
     ang_tilt=values['-TILT-']
     
     return FileNames, Shift, flag_display, ratio_fixe, disk_display, sfit_onlyfinal,ang_tilt
 
 """
 -------------------------------------------------------------------------------------------
-le programme commence ici !
-
-si version windows
-# recupere les parametres utilisateurs enregistrés lors de la session
-# precedente dans un fichier txt "inti.ini" qui va etre placé ici dans le
-repertoire du script
-
-si version mac 
-#recupere les noms de fichiers par un input console
-#valeurs de flag_display, Shift et ratio_fixe sont en dur dans le progra
-
+Program starts here !
 --------------------------------------------------------------------------------------------
 """
 
-# pour christian
-version_mac =False #mettre a true pour etre en version mac
+# inti.ini is a bootstart file to read last directory used by app
+# this file is stored in the module directory
 
-if not(version_mac):
-    try:
-        mydir_ini=os.path.dirname(sys.argv[0])+'/inti.ini'
-        #print('mon repertoire : ', mydir_ini)
-        with open(mydir_ini, "r") as f1:
-        
-            param_init = f1.readlines()
-            WorkDir=param_init[0]
-    except:
-        WorkDir=''
+try:
+    mydir_ini=os.path.dirname(sys.argv[0])+'/inti.ini'
+    #print('mon repertoire : ', mydir_ini)
+    with open(mydir_ini, "r") as f1:
+        param_init = f1.readlines()
+        WorkDir=param_init[0]
+except:
+    WorkDir=''
 
-    # Recupere paramatres de la boite de dialogue
-    serfiles, Shift, flag_display, ratio_fixe, disk_display,sfit_onlyfinal, ang_tilt = UI_SerBrowse(WorkDir)
-    serfiles=serfiles.split(';')
+# Recupere paramatres de la boite de dialogue
+serfiles, Shift, flag_display, ratio_fixe, disk_display,sfit_onlyfinal, ang_tilt = UI_SerBrowse(WorkDir)
+serfiles=serfiles.split(';')
 
-else: #version mac
-    WorkDir='/Users/macbuil/ocuments/pyser/'
-    serfiles=[]
-    print('nom du fichier sans extension, ou des fichiers sans extension séparés par une virgule')
-    basefichs=input('nom(s): ')
-    basefichs=basefichs.split(',')
-    for b in basefichs:
-        serfiles.append(WorkDir+b.strip()+'.ser')
-    # parametres en dur pour version mac
-    flag_display=False  # affiche ou pas la recosntruction du disque
-    ratio_fixe=0        # pas de ratio_fixe, calcul automatique sera fait
-    Shift=0             # valeur du decalage en pixel pour la longueur d'onde
-    disk_display=True   # affiche ou pas un disque noir sur image png avec seuils protus
 
-    
-#code commun mac ou windows
-#************************************************************************************************
-
-#pour gerer la tempo des affichages des images resultats dans cv2.waitKey
-#sit plusieurs fichiers à traiter
+# pour gerer la tempo des affichages des images resultats dans cv2.waitKey
+# si plusieurs fichiers à traiter
 if len(serfiles)==1:
     tempo=60000 #tempo 60 secondes, pour no tempo mettre tempo=0 et faire enter pour terminer
 else:
-    tempo=1
+    tempo=1000 #temp 1 sec
     
 # boucle sur la liste des fichers
 for serfile in serfiles:
-    print (serfile)
+    #print (serfile)
 
     if serfile=='':
         sys.exit()
@@ -177,12 +157,12 @@ for serfile in serfiles:
     except:
         pass
     
-   
-    
+
     # appel au module d'extraction, reconstruction et correction
     #
     # basefich: nom du fichier ser sans extension et sans repertoire
     # dx: decalage en pixel par rapport au centre de la raie 
+    
     try:
         Shift=int(Shift)
     except:
@@ -192,30 +172,32 @@ for serfile in serfiles:
     
     base=os.path.basename(serfile)
     basefich=os.path.splitext(base)[0]
-   
     
+    if Shift != 0 :
+        #add shift value in filename to not erase previous file
+        basefich=basefich+'_dp'+str(Shift)
+
     ih=frame.shape[0]
     newiw=frame.shape[1]
-    
-    dm=max(ih,newiw)
-    
-    
-    # gere reduction image png
-    if dm>600:
-        sc=0.5
-        
-    # gere reduction image png
-    if dm>1500:
-        sc=0.4
-        
-    # gere reduction image png
-    if dm>2500:
-        sc=0.2
-    
+
     top_w=0
     left_w=0
-    tw=250
+    tw=180
     lw=32
+    
+    
+    # my screensize is 1536x864 - harcoded as tk.TK() produces an error in spyder
+    # plus petit for speed up
+    screensizeH = (800-50) - (3*lw) 
+    screensizeW = (1200)-(3*tw)
+    
+    # gere reduction image png
+    nw = screensizeW/newiw
+    nh = screensizeH/ih
+    sc=min(nw,nh)
+    
+    if sc >= 1 :
+        sc = 1
     
     """
     cv2.namedWindow('sun0', cv2.WINDOW_NORMAL)
@@ -290,17 +272,16 @@ for serfile in serfiles:
     fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
     fc2[fc2<0]=0
     frame_contrasted3=np.array(fc2, dtype='uint16')
-    if disk_display==True:
+    if disk_display==True and cercle[0]!=0:
         x0=cercle[0]
         y0=cercle[1]
-        wi=cercle[2]-5
-        he=cercle[3]-5
-        #ang=-int(cercle[3])
+        wi=cercle[2]
+        he=cercle[3]
+
         r=int(min(wi,he)-3)
-        c=(0,0,0)
-        #r=int(cercle[2])-5
+        r=r-int(0.003*r)
+        #c=(0,0,0)
         frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
-        #frame_constrasted3=cv2.ellipse(frame_contrasted3, (x0,y0),(wi,he),0,0,360,r,-1,lineType=cv2.LINE_AA )
     cv2.imshow('protus',frame_contrasted3)
     #cv2.waitKey(0)
     
@@ -342,6 +323,7 @@ for serfile in serfiles:
     cv2.waitKey(tempo)
     cv2.imwrite(basefich+'_color.png',imC)
     """
+
     cv2.waitKey(tempo)
     #sauvegarde le fits
     frame2=np.copy(frame)
@@ -350,6 +332,31 @@ for serfile in serfiles:
     DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
 
     cv2.destroyAllWindows()
+    
+    """
+    not really useful, too small, better to use png or fits
+    and strange message on spyder when UI display "can't invoke "event" command"
+    seems to be linked to tk (procedure "ttk::ThemeChanged" line 6)
+    
+    # ajout de feuille de summary
+    screen = tk.Tk()
+    screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()
+    screen.destroy()
+    im_1= cv2.hconcat([frame_contrasted, frame_contrasted2])
+    im_2=cv2.hconcat([frame_contrasted3, cc])
+    im=cv2.vconcat([im_1,im_2])
+    scale=min(screensize[0]/im.shape[1], screensize[1]/im.shape[0])
+    cv2.namedWindow('summary', cv2.WINDOW_NORMAL)
+    cv2.moveWindow('summary', 0,0)
+    cv2.resizeWindow('summary', int(im.shape[1]*scale), int(im.shape[0]*scale))
+    cv2.imshow('summary', im)
+
+    #sauvegarde en png pour appliquer une colormap par autre script
+    cv2.imwrite(basefich+'_summary.png',im)
+
+    cv2.waitKey(tempo)
+    cv2.destroyAllWindows()
+    """
     print (serfile)
     print()
 
