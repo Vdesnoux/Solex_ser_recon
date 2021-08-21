@@ -13,7 +13,10 @@ Front end de traitements spectro helio de fichier ser
 automatiquement
 - sauvegarde fichier avec pixel shift in filename if shift<>0
 
-
+Version 19 aout 2021
+- suppression des flags dans la GUI pour simplification
+- ajout '_' pour avoir fichier en tete dans explorer/finder
+- ajout de _dp pour valeur de decalage différente de zéro dans noms de fichier pour eviter d'ecraser le precedent traitement
 
 Version 16 juillet 2021
 - remplacement des methodes des limbes par fit_ellipse
@@ -26,9 +29,7 @@ Version 16 juillet 2021
 To be noted... image fits data are the image pixels value, no change of dynamic, no thresholding. Only png images are thresholded.
 Black disk is a python graphic overlay, not burned into images. Circle data are logged for ISIS processing.
 
-Version 11 aout 2021
-- suppression des flags dans la GUI pour simplification
-- ajout image de summary from JF Pitet et gestion screen tk from JB Butet
+
 
 """
 import numpy as np
@@ -37,12 +38,28 @@ import os
 import sys
 import Inti_recon as sol
 from astropy.io import fits
-import tkinter as tk
+#import tkinter as tk
 
 
 #import time
 
 import PySimpleGUI as sg
+
+SYMBOL_UP =    '▲'
+SYMBOL_DOWN =  '▼'
+
+
+def collapse(layout, key):
+    """
+    Helper function that creates a Column that can be later made hidden, thus appearing "collapsed"
+    :param layout: The layout for the section
+    :param key: Key used to make this seciton visible / invisible
+    :return: A pinned column that can be placed directly into your layout
+    :rtype: sg.pin
+    """
+    return sg.pin(sg.Column(layout, key=key))
+
+
 
 def UI_SerBrowse (WorkDir):
     """
@@ -64,19 +81,33 @@ def UI_SerBrowse (WorkDir):
     sg.theme('Dark2')
     sg.theme_button_color(('white', '#500000'))
     
+    section1 = [
+            [sg.Checkbox('Affiche reconstruction en direct', default=False, key='-DISP-')],
+            [sg.Checkbox('Ne sauve pas fichiers fits intermédiaires ', default=False, key='-SFIT-')],
+            [sg.Text('Ratio SY/SX (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-RATIO-')],
+            [sg.Text('Angle Tilt en degrés (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-TILT-')]
+            ]
+    
+    
     layout = [
+
     [sg.Text('Nom du fichier', size=(15, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
      sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
-    #[sg.Checkbox('Affiche reconstruction ', default=False, key='-DISP-')],
-    #[sg.Checkbox('Affiche disque noir sur image protuberances', default=True, key='-DISK-')],
+    
     #[sg.Checkbox('Sauve uniquement fits _recon et _clahe ', default=True, key='-SFIT-')],
-    [sg.Text('Ratio SY/SX (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-RATIO-')],
-    [sg.Text('Angle Tilt en degrés (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-TILT-')],
+    #### Section 1 part ####
+    [sg.T(SYMBOL_UP, enable_events=True, k='-OPEN SEC1-', text_color='white'), sg.T('Advanced', enable_events=True, text_color='white', k='-OPEN SEC1-TEXT')],
+    [collapse(section1, '-SEC1-')],
+    #[sg.Text('Ratio SY/SX (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-RATIO-')],
+    #[sg.Text('Angle Tilt en degrés (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-TILT-')],
     [sg.Text('Decalage pixel',size=(15,1)),sg.Input(default_text='0',size=(5,1),key='-DX-',enable_events=True)],  
-    [sg.Button('Ok'), sg.Cancel()]
+    [sg.Button('Ok', size=(14,1)), sg.Cancel()],
+    [sg.Text('Inti V3.0.0 by V.Desnoux et.al. ', size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
     ] 
     
     window = sg.Window('Processing', layout, finalize=True)
+    opened1 = False
+    window['-SEC1-'].update(visible=opened1)
     
     window['-FILE-'].update(WorkDir) 
     window.BringToFront()
@@ -88,22 +119,25 @@ def UI_SerBrowse (WorkDir):
         
         if event=='Ok':
             break
+        
+        if event.startswith('-OPEN SEC1-'):
+            opened1 = not opened1
+            window['-OPEN SEC1-'].update(SYMBOL_DOWN if opened1 else SYMBOL_UP)
+            window['-SEC1-'].update(visible=opened1)
 
     window.close()
                
     FileNames=values['-FILE-']
     Shift=values['-DX-']
     
-    #flag_display=values['-DISP-']
-    flag_display=False
+    flag_display=values['-DISP-']
+    #flag_display=False
     ratio_fixe=float(values['-RATIO-'])
-    #disk_display=values['-DISK-']
-    disk_display=True
-    #sfit_onlyfinal=values['-SFIT-']
-    sfit_onlyfinal=False
+    sfit_onlyfinal=values['-SFIT-']
+    #sfit_onlyfinal=False
     ang_tilt=values['-TILT-']
     
-    return FileNames, Shift, flag_display, ratio_fixe, disk_display, sfit_onlyfinal,ang_tilt
+    return FileNames, Shift, flag_display, ratio_fixe, sfit_onlyfinal,ang_tilt
 
 """
 -------------------------------------------------------------------------------------------
@@ -124,7 +158,7 @@ except:
     WorkDir=''
 
 # Recupere paramatres de la boite de dialogue
-serfiles, Shift, flag_display, ratio_fixe, disk_display,sfit_onlyfinal, ang_tilt = UI_SerBrowse(WorkDir)
+serfiles, Shift, flag_display, ratio_fixe, sfit_onlyfinal, ang_tilt = UI_SerBrowse(WorkDir)
 serfiles=serfiles.split(';')
 
 
@@ -171,11 +205,11 @@ for serfile in serfiles:
     frame, header, cercle=sol.solex_proc(serfile,Shift,flag_display,ratio_fixe,sfit_onlyfinal,ang_tilt)
     
     base=os.path.basename(serfile)
-    basefich=os.path.splitext(base)[0]
+    basefich='_'+os.path.splitext(base)[0]
     
     if Shift != 0 :
         #add shift value in filename to not erase previous file
-        basefich=basefich+'_dp'+str(Shift)
+        basefich=basefich+'_dp'+str(Shift) # ajout '_' pour avoir fichier en tete dans explorer/finder
 
     ih=frame.shape[0]
     newiw=frame.shape[1]
@@ -188,8 +222,8 @@ for serfile in serfiles:
     
     # my screensize is 1536x864 - harcoded as tk.TK() produces an error in spyder
     # plus petit for speed up
-    screensizeH = (800-50) - (3*lw) 
-    screensizeW = (1200)-(3*tw)
+    screensizeH = (864-50) - (3*lw) 
+    screensizeW = (1536)-(3*tw)
     
     # gere reduction image png
     nw = screensizeW/newiw
@@ -199,18 +233,25 @@ for serfile in serfiles:
     if sc >= 1 :
         sc = 1
     
-    """
-    cv2.namedWindow('sun0', cv2.WINDOW_NORMAL)
-    cv2.moveWindow('sun0', 0, 0)
-    cv2.resizeWindow('sun0', (int(newiw*sc), int(ih*sc)))
-    cv2.imshow('sun0',frame)
-  
-    top_w=top_w+tw
-    left_w=left_w+lw
-    """
-    cv2.namedWindow('sun', cv2.WINDOW_NORMAL)
-    cv2.moveWindow('sun', top_w, left_w)
-    cv2.resizeWindow('sun', (int(newiw*sc), int(ih*sc)))
+    # Lecture et affiche image disque brut
+    ImgFile=basefich+'_img.fits'
+    hdulist = fits.open(ImgFile, memmap=False)
+    hdu=hdulist[0]
+    myspectrum=hdu.data
+    rih=hdu.header['NAXIS2']
+    riw=hdu.header['NAXIS1']
+    Disk=np.reshape(myspectrum, (rih,riw))
+    
+    Ratio_lum=(65536/np.max(Disk))*0.8
+    Disk2=np.array((np.copy(Disk)*Ratio_lum),dtype='uint16')
+    hdulist.close()
+    
+    
+    #affichage des images
+    cv2.namedWindow('Raw', cv2.WINDOW_NORMAL)
+    cv2.moveWindow('Raw', top_w, left_w)
+    cv2.resizeWindow('Raw', (int(riw*sc), int(rih*sc)))
+    
     
     top_w=top_w+tw
     left_w=left_w+lw
@@ -235,6 +276,7 @@ for serfile in serfiles:
     clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
     cl1 = clahe.apply(frame)
     
+    
     #image leger seuils
     frame1=np.copy(frame)
     Seuil_bas=np.percentile(frame, 25)
@@ -245,8 +287,11 @@ for serfile in serfiles:
     fc=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
     fc[fc<0]=0
     frame_contrasted=np.array(fc, dtype='uint16')
-    cv2.imshow('sun',frame_contrasted)
+    #cv2.imshow('sun',frame_contrasted)
     #cv2.waitKey(0)
+
+    #image raw
+    cv2.imshow('Raw',Disk2)
     
     #image seuils serres 
     frame1=np.copy(frame)
@@ -272,7 +317,7 @@ for serfile in serfiles:
     fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
     fc2[fc2<0]=0
     frame_contrasted3=np.array(fc2, dtype='uint16')
-    if disk_display==True and cercle[0]!=0:
+    if cercle[0]!=0:
         x0=cercle[0]
         y0=cercle[1]
         wi=cercle[2]
@@ -293,11 +338,11 @@ for serfile in serfiles:
     cv2.imshow('clahe',cc)
     #cv2.waitKey(tempo)  #affiche 15s et continue
 
-    #sauvegarde en png pour appliquer une colormap par autre script
+    #sauvegarde en png disk quasi seuils max
     cv2.imwrite(basefich+'_disk.png',frame_contrasted)
-    #sauvegarde en png pour appliquer une colormap par autre script
+    #sauvegarde en png seuils serrés
     cv2.imwrite(basefich+'_diskHC.png',frame_contrasted2)
-    #sauvegarde en png pour appliquer une colormap par autre script
+    #sauvegarde en png seuils protus
     cv2.imwrite(basefich+'_protus.png',frame_contrasted3)
     #sauvegarde en png de clahe
     cv2.imwrite(basefich+'_clahe.png',cc)
@@ -323,6 +368,7 @@ for serfile in serfiles:
     cv2.waitKey(tempo)
     cv2.imwrite(basefich+'_color.png',imC)
     """
+    
 
     cv2.waitKey(tempo)
     #sauvegarde le fits
