@@ -6,6 +6,8 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+Version du 19 aout 2021 - Antibes
+- ajout de extension au nom de fichier si decalage en pixels non égale à zéro
 
 Version 11 aout 2021 - Antibes
 Large modification
@@ -16,9 +18,10 @@ Large modification
 - check after scaling if close to circle
 - if not perform second scaling
 - split function detect_edges and ellipse_fit
-- ajout _log to avoid firecapture settings overwrite (issue)
+- add _log to log file to avoid firecapture settings overwrite (issue)
 - add internal flag to debug and display graphics for ellipse_fit
 - mise en fonction logme des prints from A&D Smiths
+- conversion date de ficier ser en format lisible
 
 
 Version 5 aout 2021 - OHP
@@ -59,14 +62,11 @@ en image calcium
 seuil=50% du max
 - ajout d'un ratio_fixe qui n'est pris en compte que si non egal a zero
 
-TODO: mettre la date dans le fichier txt a decoder du fichier ser
-TODO: nom fichier fits different si pixel shift
-TODO: utiliser ser reader module de JB
 
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from astropy.io import fits
 from scipy.interpolate import interp1d
 import os
@@ -95,7 +95,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     longueur d'onde decalée
     ----------------------------------------------------------------------------
     """
-    plt.gray()              #palette de gris si utilise matplotlib pour visu debug
+    #plt.gray()              #palette de gris si utilise matplotlib pour visu debug
     
     
     clearlog()
@@ -104,7 +104,11 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     WorkDir=os.path.dirname(serfile)+"/"
     os.chdir(WorkDir)
     base=os.path.basename(serfile)
-    basefich=os.path.splitext(base)[0]
+    basefich='_'+os.path.splitext(base)[0]
+    
+    if shift != 0 :
+        #add shift value in filename to not erase previous file
+        basefich=basefich+'_dp'+str(shift) # ajout '_' pour fichier en tete d'explorer
     
     # ouverture du fichier ser
 
@@ -116,24 +120,20 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     FrameCount = scan.getLength()    #      return number of frame in SER file.
     Width = scan.getWidth()          #      return width of a frame
     Height = scan.getHeight()        #      return height of a frame
-    #dateSer = scan.getHeader()['DateTimeUTC']  
+    dateSerUTC = scan.getHeader()['DateTimeUTC']
+    dateSer=scan.getHeader()['DateTime']
     logme (serfile)
     logme ('ser frame width, height : ' + str(Width)+','+str(Height))
     logme ('ser number of frame : '+str( FrameCount))
-    #logme ('ser date : '+str(dateSer))
-    dateSer=datetime.fromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
-    logme('ser date UTC :' + dateSer.strftime('"%Y-%m-%dT%H:%M:%S.%f7%z"'))
-
-    
-    #cv2.namedWindow('Ser', cv2.WINDOW_NORMAL)
-    #cv2.resizeWindow('Ser', Width, Height)
-    #cv2.moveWindow('Ser', 100, 0)
+    try:
+        #logme ('ser date : '+str(dateSer))
+        f_dateSerUTC=datetime.fromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
+        logme('ser date UTC :' + f_dateSerUTC.strftime('"%Y-%m-%dT%H:%M:%S.%f7%z"'))
+    except:
+        pass
     
     ok_flag=True              # Flag pour sortir de la boucle de lexture avec exit
-    count=Width*Height        # Nombre d'octet d'une trame
-    FrameIndex=1              # Index de trame
-    #offset=178                # Offset de l'entete fichier ser
-    
+    FrameIndex=1              # Index de trame    
 
     # fichier ser avec spectre raies verticales ou horizontales (flag true)
     if Width>Height:
@@ -184,7 +184,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         #increment la trame et l'offset pour lire trame suivant du fichier .ser
         FrameIndex=FrameIndex+1
     
-    
+   
     # calcul de l'image moyenne
     myimg=mydata/(FrameIndex-1)             # Moyenne
     myimg=np.array(myimg, dtype='uint16')   # Passe en entier 16 bits
@@ -203,14 +203,26 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         #t1=float(time.time())
         #print('image mean saved',t1-t0)
     
+    #gestion taille des images Ser et Disk
+    # my screensize is 1536x864 - harcoded as tk.TK() produces an error in spyder
+    # plus petit for speed up
+    screensizeH = (864-50)*0.8
+    screensizeW = (1536)*0.8
     
+    # gere reduction image png
+    nw = screensizeW/iw
+    nh = screensizeH/ih
+    sc=min(nw,nh)
+
+    if sc >= 1 :
+        sc = 1
     
     #affiche image moyenne
     cv2.namedWindow('Ser', cv2.WINDOW_NORMAL)
-    cv2.resizeWindow('Ser', iw, ih)
+    cv2.resizeWindow('Ser', int(iw*sc), int(ih*sc))
     cv2.moveWindow('Ser', 100, 0)
     cv2.imshow ('Ser', myimg)
-    if cv2.waitKey(2000) == 27:                     # exit if Escape is hit
+    if cv2.waitKey(2000) == 27:  # exit if Escape is hit otherwise wait 2 secondes
            cv2.destroyAllWindows()
            sys.exit()
     
@@ -228,9 +240,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     # detect up and down limit of the spectrum of the mean image
     y1,y2=detect_bord(myimg, axis=1, offset=5)
     
-    toprint='Limites verticales y1,y2 : '+str(y1)+' '+str(y2)
-    print(toprint)
-    mylog.append(toprint+'\n')
+    logme('Limites verticales y1,y2 : '+str(y1)+' '+str(y2))
     
     PosRaieHaut=y1
     PosRaieBas=y2
@@ -301,16 +311,17 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     
     
     if flag_display:
+                   
         cv2.namedWindow('disk', cv2.WINDOW_NORMAL)
         FrameMax=FrameCount
-        cv2.resizeWindow('disk', FrameMax, ih)
-        cv2.moveWindow('disk', 100, 0)
+        cv2.resizeWindow('disk', int(FrameMax*sc), int(ih*sc))
+        cv2.moveWindow('disk', int(iw*sc)+1, 0)
         #initialize le tableau qui va recevoir les intensités spectrale de chaque trame
         Disk=np.zeros((ih,FrameMax), dtype='uint16')
         
         cv2.namedWindow('image', cv2.WINDOW_NORMAL)
         cv2.moveWindow('image', 0, 0)
-        cv2.resizeWindow('image', int(iw), int(ih))
+        cv2.resizeWindow('image', int(iw*sc), int(ih*sc))
     else:
         #Disk=np.zeros((ih,1), dtype='uint16')
         FrameMax=FrameCount
@@ -352,27 +363,27 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         Disk[:,FrameIndex]=IntensiteRaie
         
         # display reconstruction of the disk refreshed every 30 lines
-        refresh_lines=int(30)
+        refresh_lines=int(20)
         if flag_display and FrameIndex %refresh_lines ==0:
             cv2.imshow ('disk', Disk)
             if cv2.waitKey(1) == 27:             # exit if Escape is hit
-                     cv2.destroyAllWindows()    
+                     cv2.destroyAllWindows()
                      sys.exit()
     
         FrameIndex=FrameIndex+1
 
    
-    #sauve fichier disque reconstruit 
+    #sauve fichier disque reconstruit pour affichage image raw en check final
     #hdu.header['NAXIS1']=FrameCount-1
     hdr['NAXIS1']=FrameCount-1
     
-    if sfit_onlyfinal==False:
-        #DiskHDU=fits.PrimaryHDU(Disk,header=hdu.header)
-        DiskHDU=fits.PrimaryHDU(Disk,header=hdr)
-        DiskHDU.writeto(basefich+'_img.fits',overwrite='True')
+    #DiskHDU=fits.PrimaryHDU(Disk,header=hdu.header)
+    DiskHDU=fits.PrimaryHDU(Disk,header=hdr)
+    DiskHDU.writeto(basefich+'_img.fits',overwrite='True')
     
     if flag_display:
         cv2.destroyAllWindows()
+        
     
     """
     --------------------------------------------------------------------
@@ -425,13 +436,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         s=np.median(m,0)
         img[c-1:c,]=s
     
-    if sfit_onlyfinal==False:
-        #sauvegarde le fits
-        #DiskHDU=fits.PrimaryHDU(img,header=hdu.header)
-        DiskHDU=fits.PrimaryHDU(img,header=hdr)
-        DiskHDU.writeto(basefich+'_corr.fits', overwrite='True')
-
-
+    
     """
     --------------------------------------------------------------
     on echaine avec la correction de transversallium
@@ -445,25 +450,14 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
 
     flag_nobords=detect_noXlimbs(frame)
     
-    #print ('flat ',y1,y2)
-    #print ('flat ', x1,x2)
-
-    
     # si mauvaise detection des bords en x alors on doit prendre toute l'image
     if flag_nobords:
         ydisk=np.median(img,1)
     else:
-        #plt.hist(frame.ravel(),bins=1000,)
-        #plt.show()
-        #plt.hist(frame.ravel(),bins=1000,cumulative=True)
-        #plt.show()
-        #seuil_bas=np.percentile(frame,25)
+
         seuil_haut=np.percentile(frame,97) 
-        #print ('Seuils de flat: ',seuil_bas, seuil_haut)
-        #print ('Seuils bas x: ',seuil_bas*4)
-        #print ('Seuils haut x: ',seuil_haut*0.25)
-        #myseuil=seuil_haut*0.2
         myseuil=seuil_haut*0.5
+        
         # filtre le profil moyen en Y en ne prenant que le disque
         ydisk=np.empty(ih+1)
         for j in range(0,ih):
@@ -473,15 +467,14 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
                 ydisk[j]=np.median(temp)
             else:
                 ydisk[j]=1
-    #y1=y1
-    #y2=y2
+
     # ne prend que le profil des intensités pour eviter les rebonds de bords
     ToSpline= ydisk[y1:y2]
     
     Smoothed2=savgol_filter(ToSpline,301, 3) # window size, polynomial order
     
     """
-    #best fit d'un polynome degre 4
+    #best fit d'un polynome degre 4 - test pour ISIS modif
     np_m=np.asarray(ToSpline)
     ym=np_m.T
     xm=np.arange(y2-y1)
@@ -569,15 +562,11 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
 
 
     if float(ang_tilt)==0:
-        
-        #methode des limbes
-        #NewImg, newiw,flag_nobords,cercle =circularise(img2,iw,ih,ratio_fixe)
-        #section=0.01
-        
+              
         # methode fit ellipse pour calcul de tilt
         # zone d'exclusion des points contours zexcl en pourcentage de la hauteur image 
-        X = detect_edge (img2, zexcl=0.1, disp_log=True)
-        EllipseFit,XE=fit_ellipse(img2, X,disp_log=True)
+        X = detect_edge (img2, zexcl=0.1, disp_log=False)
+        EllipseFit,XE=fit_ellipse(img2, X,disp_log=False)
 
     
     if not(flag_nobords):
@@ -619,7 +608,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
             AlphaRad=math.radians(AlphaDeg)
             TanAlpha=np.arctan(AlphaRad)
             
-        logme('Angle Tilt ellipse: '+"{:+.2f}".format(AlphaDeg))
+        logme('Angle Tilt : '+"{:+.2f}".format(AlphaDeg))
 
         """
         # calcul l'angle de tilt old method
@@ -655,10 +644,11 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         else:
             logme('alignment better than 0.3°, no tilt correction needed')
     
-    # sauvegarde en fits de l'image tilt
-    img2=np.array(img2, dtype='uint16')
-    DiskHDU=fits.PrimaryHDU(img2,header=hdr)
-    DiskHDU.writeto(basefich+'_tilt.fits', overwrite='True')
+    if sfit_onlyfinal==False:
+        # sauvegarde en fits de l'image tilt
+        img2=np.array(img2, dtype='uint16')
+        DiskHDU=fits.PrimaryHDU(img2,header=hdr)
+        DiskHDU.writeto(basefich+'_tilt.fits', overwrite='True')
     
     
     """

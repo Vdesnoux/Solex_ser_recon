@@ -14,11 +14,18 @@ from scipy.ndimage import gaussian_filter1d
 import ellipse as el
 from matplotlib.patches import Ellipse
 
+"""
+Version du 19 aout
+- correction de la formule de matt  pour le calcul de l'heure des fichiers SER 
+
+"""
+
 mylog=[]
 
 #from matt considine
 def SER_time_seconds(h):
-    timestamp_1970 = int(621355967998300000) - int(1e7*(4*60*60-0.17))
+    # removed last part to avoid removing 4 hours to the UTC time
+    timestamp_1970 = int(621355967998300000) #- int(1e7*(4*60*60-0.17))
     s=float(h-timestamp_1970)/1e7 # convert to seconds
     return s # number of seconds from 0001 to 1970
 
