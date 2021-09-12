@@ -12,6 +12,12 @@ Front end de traitements spectro helio de fichier ser
 - ajout d'une zone pour entrer un ratio fixe et un angle de tilt fixe. Si reste à zero alors il sera calculé
 automatiquement
 - sauvegarde fichier avec pixel shift in filename if shift<>0
+-----------------------------------------------------------------------------------------------------------------
+
+Version 8 sept 2021
+- gestion erreur absence nom de fichier
+- disque noir plus grand de 97% a 98 %
+- ne sauve plus les fichiers fits intermediaires par defaut (_mean, _tilt et _flat)
 
 Version 19 aout 2021
 - suppression des flags dans la GUI pour simplification
@@ -83,7 +89,7 @@ def UI_SerBrowse (WorkDir):
     
     section1 = [
             [sg.Checkbox('Affiche reconstruction en direct', default=False, key='-DISP-')],
-            [sg.Checkbox('Ne sauve pas fichiers fits intermédiaires ', default=False, key='-SFIT-')],
+            [sg.Checkbox('Ne sauve pas fichiers fits intermédiaires ', default=True, key='-SFIT-')],
             [sg.Text('Ratio SY/SX (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-RATIO-')],
             [sg.Text('Angle Tilt en degrés (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-TILT-')]
             ]
@@ -102,7 +108,7 @@ def UI_SerBrowse (WorkDir):
     #[sg.Text('Angle Tilt en degrés (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-TILT-')],
     [sg.Text('Decalage pixel',size=(15,1)),sg.Input(default_text='0',size=(5,1),key='-DX-',enable_events=True)],  
     [sg.Button('Ok', size=(14,1)), sg.Cancel()],
-    [sg.Text('Inti V3.0.0 by V.Desnoux et.al. ', size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
+    [sg.Text('Inti V3.0.1 by V.Desnoux et.al. ', size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
     ] 
     
     window = sg.Window('Processing', layout, finalize=True)
@@ -128,6 +134,8 @@ def UI_SerBrowse (WorkDir):
     window.close()
                
     FileNames=values['-FILE-']
+    if FileNames==None :
+            FileNames=''
     Shift=values['-DX-']
     
     flag_display=values['-DISP-']
@@ -204,6 +212,7 @@ for serfile in serfiles:
     
     frame, header, cercle=sol.solex_proc(serfile,Shift,flag_display,ratio_fixe,sfit_onlyfinal,ang_tilt)
     
+    #t0=time.time()
     base=os.path.basename(serfile)
     basefich='_'+os.path.splitext(base)[0]
     
@@ -247,7 +256,7 @@ for serfile in serfiles:
     hdulist.close()
     
     
-    #affichage des images
+    # prepare fenetres pour affichage des images
     cv2.namedWindow('Raw', cv2.WINDOW_NORMAL)
     cv2.moveWindow('Raw', top_w, left_w)
     cv2.resizeWindow('Raw', (int(riw*sc), int(rih*sc)))
@@ -276,8 +285,8 @@ for serfile in serfiles:
     clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
     cl1 = clahe.apply(frame)
     
-    
-    #image leger seuils
+    # png image generation
+    # image leger seuils
     frame1=np.copy(frame)
     Seuil_bas=np.percentile(frame, 25)
     Seuil_haut=np.percentile(frame,99.9999)
@@ -290,10 +299,10 @@ for serfile in serfiles:
     #cv2.imshow('sun',frame_contrasted)
     #cv2.waitKey(0)
 
-    #image raw
+    # image raw
     cv2.imshow('Raw',Disk2)
     
-    #image seuils serres 
+    # image seuils serres 
     frame1=np.copy(frame)
     sub_frame=frame1[5:,:-5]
     Seuil_haut=np.percentile(sub_frame,99.999)
@@ -307,7 +316,7 @@ for serfile in serfiles:
     cv2.imshow('contrast',frame_contrasted2)
     #cv2.waitKey(0)
     
-    #image seuils protus
+    # image seuils protus
     frame1=np.copy(frame)
     Seuil_haut=np.percentile(frame1,99.9999)*0.18
     Seuil_bas=0
@@ -317,6 +326,8 @@ for serfile in serfiles:
     fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
     fc2[fc2<0]=0
     frame_contrasted3=np.array(fc2, dtype='uint16')
+    
+    #calcul du disque noir pour mieux distinguer les protuberances
     if cercle[0]!=0:
         x0=cercle[0]
         y0=cercle[1]
@@ -324,7 +335,7 @@ for serfile in serfiles:
         he=cercle[3]
 
         r=int(min(wi,he)-3)
-        r=r-int(0.003*r)
+        r=int(r-round(0.002*r))
         #c=(0,0,0)
         frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
     cv2.imshow('protus',frame_contrasted3)
@@ -336,8 +347,9 @@ for serfile in serfiles:
     cc[cc<0]=0
     cc=np.array(cc, dtype='uint16')
     cv2.imshow('clahe',cc)
-    #cv2.waitKey(tempo)  #affiche 15s et continue
 
+    #sauvegarde en png disk quasi sans seuillage
+    cv2.imwrite(basefich+'_raw.png',Disk2)
     #sauvegarde en png disk quasi seuils max
     cv2.imwrite(basefich+'_disk.png',frame_contrasted)
     #sauvegarde en png seuils serrés
@@ -368,7 +380,8 @@ for serfile in serfiles:
     cv2.waitKey(tempo)
     cv2.imwrite(basefich+'_color.png',imC)
     """
-    
+    #t1=time.time()
+    #print('affichage : ', t1-t0)
 
     cv2.waitKey(tempo)
     #sauvegarde le fits
@@ -378,6 +391,7 @@ for serfile in serfiles:
     DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
 
     cv2.destroyAllWindows()
+    
     
     """
     not really useful, too small, better to use png or fits

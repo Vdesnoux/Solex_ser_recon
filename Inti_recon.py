@@ -6,8 +6,17 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+
+Version du 8 sept 2021 - paris
+- Augmente à 3 decimales l'affichage angle et ratio scaling
+- changement suffixe _img par _raw
+- tilt par rapport au centre
+- agrandi image apres tilt pour ne pas couper l'image
+- calculs avec round plutot que int
+
 Version du 19 aout 2021 - Antibes
 - ajout de extension au nom de fichier si decalage en pixels non égale à zéro
+- add underscore at beggining of any processed file to retrieve them faster as for isis
 
 Version 11 aout 2021 - Antibes
 Large modification
@@ -97,6 +106,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     """
     #plt.gray()              #palette de gris si utilise matplotlib pour visu debug
     
+    #t0=time.time()
     
     clearlog()
     
@@ -202,6 +212,11 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         #debug
         #t1=float(time.time())
         #print('image mean saved',t1-t0)
+    
+    #t1=time.time()
+    #print('fin image moyenne :', t1-t0)
+    #t0=time.time()
+    
     
     #gestion taille des images Ser et Disk
     # my screensize is 1536x864 - harcoded as tk.TK() produces an error in spyder
@@ -379,11 +394,14 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     
     #DiskHDU=fits.PrimaryHDU(Disk,header=hdu.header)
     DiskHDU=fits.PrimaryHDU(Disk,header=hdr)
-    DiskHDU.writeto(basefich+'_img.fits',overwrite='True')
+    DiskHDU.writeto(basefich+'_raw.fits',overwrite='True')
     
     if flag_display:
         cv2.destroyAllWindows()
         
+    #t1=time.time()
+    #print('fin image raw :', t1-t0)
+    #t0=time.time()
     
     """
     --------------------------------------------------------------------
@@ -548,6 +566,10 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
         DiskHDU.writeto(basefich+'_flat.fits',overwrite='True')
    
+    #t1=time.time()
+    #print('fin flat :', t1-t0)
+    #t0=time.time()
+   
     """
     ------------------------------------------------------------
     calcul du tilt si on voit les bords du soleil
@@ -608,26 +630,21 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
             AlphaRad=math.radians(AlphaDeg)
             TanAlpha=np.arctan(AlphaRad)
             
-        logme('Angle Tilt : '+"{:+.2f}".format(AlphaDeg))
+        logme('Angle Tilt : '+"{:+.3f}".format(AlphaDeg))
 
-        """
-        # calcul l'angle de tilt old method
-        dy=(y_x2-y_x1)
-        dx=(x2-x1)
-        TanAlpha2=(-dy/dx)
-        AlphaRad2=math.atan(TanAlpha2)
-        AlphaDeg2=math.degrees(AlphaRad2)
-            
-        toprint='Angle Tilt limbes: '+"{:+.2f}".format(AlphaDeg2)
-        print(toprint)
-        mylog.append(toprint+'\n')
-        """
         
         # test si correction de tilt si angle supérieur a 0.3 degres
         if abs(AlphaDeg)> 0.3 :
-            #decale lignes images par rapport a x1
-            #colref=x1
-            colref=el_x1
+            
+            #decale lignes images par rapport au centre
+            colref=round((el_x1+el_x2)/2)
+            dymax=int(abs(TanAlpha)*((el_x2-el_x1)/2))
+            a=np.ones((dymax,iw))
+            img2=np.concatenate((a,img2,a))
+            
+            ih=ih+dymax*2
+            
+                
             NewImg=np.empty((ih,iw))
             for i in range(0,iw):
                 x=img2[:,i]
@@ -657,6 +674,10 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     ----------------------------------------------------------------
     """
     
+    #t1=time.time()
+    #print('fin tilt  :', t1-t0)
+    #t0=time.time()
+    
     if flag_nobords:
         ratio_fixe=0.5
         
@@ -672,12 +693,12 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         EllipseFit,XE=fit_ellipse(img2, X,disp_log=False)
         
         ratio=EllipseFit[2]/EllipseFit[1]
-        logme('Scaling SY/SX : '+"{:+.2f}".format(ratio))
+        logme('Scaling SY/SX : '+"{:+.3f}".format(ratio))
         NewImg, newiw=circularise2(img2,iw,ih,ratio)
     
     else:
         #methode des limbes pour forcer le ratio SY/SX
-        logme('Scaling SY/SX fixe: '+"{:+.2f}".format(ratio_fixe))
+        logme('Scaling SY/SX fixe: '+"{:+.3f}".format(ratio_fixe))
         NewImg, newiw,flag_nobords,cercle =circularise(img2,iw,ih,ratio_fixe)
     
 
@@ -710,13 +731,13 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
             EllipseFit,XE=fit_ellipse(frame, X, disp_log=False)
           
         
-        xc=int(EllipseFit[0][0])
-        yc=int(EllipseFit[0][1])
-        wi=int(EllipseFit[1]) # diametre
-        he=int(EllipseFit[2])
+        xc=round(EllipseFit[0][0])
+        yc=round(EllipseFit[0][1])
+        wi=round(EllipseFit[1]) # diametre
+        he=round(EllipseFit[2])
         cercle=[xc,yc,wi,he]
-        r=int(min(wi-5,he-5)-3)
-        logme('Final SY/SX :'+ "{:+.2f}".format(he/wi))
+        r=round(min(wi-5,he-5)-3)
+        logme('Final SY/SX :'+ "{:+.3f}".format(he/wi))
         logme('Centre xc,yc et rayon : '+str(xc)+' '+str(yc)+' '+str(int(r)))
 
     
@@ -729,6 +750,9 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
     with  open(basefich+'_log.txt', "w") as logfile:
         logfile.writelines(mylog)
     
-    #return frame, hdu.header, cercle
+    #t1=time.time()
+    #print('fin scaling  :', t1-t0)
+
+
     return frame, hdr, cercle
     
