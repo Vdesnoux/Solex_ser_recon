@@ -13,6 +13,8 @@ Front end de traitements spectro helio de fichier ser
 automatiquement
 - sauvegarde fichier avec pixel shift in filename if shift<>0
 -----------------------------------------------------------------------------------------------------------------
+version 12 sept 2021 - antibes
+- affichage disque noir et seuils protus sur suggestion de mattC
 
 Version 8 sept 2021
 - gestion erreur absence nom de fichier
@@ -316,30 +318,55 @@ for serfile in serfiles:
     cv2.imshow('contrast',frame_contrasted2)
     #cv2.waitKey(0)
     
-    # image seuils protus
-    frame1=np.copy(frame)
-    Seuil_haut=np.percentile(frame1,99.9999)*0.18
-    Seuil_bas=0
-    #print('seuil bas protu', Seuil_bas)
-    #print('seuil haut protu', Seuil_haut)
-    frame1[frame1>Seuil_haut]=Seuil_haut
-    fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
-    fc2[fc2<0]=0
-    frame_contrasted3=np.array(fc2, dtype='uint16')
+    if 2==1:   #improvements suggested by mattC to hide sun with disk
+        # image seuils protus original
+        frame1=np.copy(frame)
+        Seuil_haut=np.percentile(frame1,99.9999)*0.18
+        Seuil_bas=0
+        #print('seuil bas protu', Seuil_bas)
+        #print('seuil haut protu', Seuil_haut)
+        frame1[frame1>Seuil_haut]=Seuil_haut
+        fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
+        fc2[fc2<0]=0
+        frame_contrasted3=np.array(fc2, dtype='uint16')
+        
+        #calcul du disque noir pour mieux distinguer les protuberances
+        if cercle[0]!=0:
+            x0=cercle[0]
+            y0=cercle[1]
+            wi=round(cercle[2]*0.998)
+            he=round(cercle[3]*0.998)
     
-    #calcul du disque noir pour mieux distinguer les protuberances
-    if cercle[0]!=0:
-        x0=cercle[0]
-        y0=cercle[1]
-        wi=cercle[2]
-        he=cercle[3]
-
-        r=int(min(wi,he)-3)
-        r=int(r-round(0.002*r))
+            r=int(min(wi,he)-3)
+            r=int(r-round(0.002*r))
+            #c=(0,0,0)
+            #frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
+            frame_contrasted3=cv2.ellipse(frame_contrasted3, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC apply tilt, change color to black
+        cv2.imshow('protus',frame_contrasted3)
+        #cv2.waitKey(0)
+    
+    else:
+        # hide disk before setting max threshold
+        frame2=np.copy(frame)
+        if cercle[0]!=0:
+            x0=cercle[0]
+            y0=cercle[1]
+            wi=round(cercle[2]*0.998)
+            he=round(cercle[3]*0.998)
+        #r=int(min(wi,he)-3)
+        #r=int(r-round(0.002*r))
         #c=(0,0,0)
-        frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
-    cv2.imshow('protus',frame_contrasted3)
-    #cv2.waitKey(0)
+        frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
+        frame1=np.copy(frame2)
+        Threshold_Upper=np.percentile(frame1,99.9999)*0.8  #still preference for high contrast
+        Threshold_low=0
+        #print('Threshold Lower prom', Threshold_low)
+        #print('Threshold Upper prom', Threshold_Upper)
+        frame1[frame1>Threshold_Upper]=Threshold_Upper
+        fc2=(frame1-Threshold_low)* (65000/(Threshold_Upper-Threshold_low))
+        fc2[fc2<0]=0
+        frame_contrasted3=np.array(fc2, dtype='uint16')
+        cv2.imshow('protus',frame_contrasted3)
     
     Seuil_bas=np.percentile(cl1, 25)
     Seuil_haut=np.percentile(cl1,99.9999)*1.05

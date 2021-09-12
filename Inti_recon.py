@@ -6,6 +6,8 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+version 12 sept 2021 - antibes
+- affichage disque noir et seuils protus sur suggestion de mattC
 
 Version du 8 sept 2021 - paris
 - Augmente à 3 decimales l'affichage angle et ratio scaling
