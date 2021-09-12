@@ -1,6 +1,8 @@
-# Solex Ser Recon - Core Module
+# Solex Ser Recon - Core Module - FR
 
 ![](https://img.shields.io/badge/Python-3.8-green "Python 3.8")
+
+(English version below)
 
 Ce dépôt contient le core du processus de recontruction du disque solaire à partir des fichiers d'acquisitions .SER dans le cadre d'utilisation du Sol'Ex.
 
@@ -93,3 +95,94 @@ exemple: decalage de n pixels pour reconstruire le continuum
     - xx_recon.fits: image finale, corrigée du slant
     - xx_clahe.fits: image finale, traitement par Contrast Local Adapative Histogram Enhancement (CLAHE)
 
+
+----------------
+# Solex Ser Recon - Core Module - EN
+
+This repository contains the core of the solar disk reconstruction process from the .SER acquisition files in the framework of the Sol'Ex use.
+
+More information on the Sol'Ex project here : [http://www.astrosurf.com/solex/](http://www.astrosurf.com/solex/)
+
+The goal is to maintain the core as a module **without user interface**. The file Inti_ser_recon.py contains a GUI for testing during development, beware this is not the final user version. The development of the core module, inti_recon.py must be independent of the GUI.
+
+### Get the code for execution
+
+You can use the code of this repository on your personal machine:
+
+- By retrieving the code by downloading the entire package via the **Code** button
+![](https://docs.github.com/assets/images/help/repository/code-button.png)
+
+
+- By using git via HTTPS or SSH. Click on "Clone with HTTPS/SSH" then in your CMD Window or linux/macos terminal
+
+git clone https://github.com/Vdesnoux/Solex_ser_recon.git`
+
+![](https://docs.github.com/assets/images/help/repository/https-url-clone.png)
+
+
+### Contribute to the repository
+
+If you wish to contribute to the repository, please consult the document **CONTRIBUTING.md** present on this repository.
+
+
+## Installation (developers)
+
+
+### Python
+Recommended version: Python 3.8
+
+
+### Virtual environment (optional)
+
+Installation
+`pip install virtualenv`
+
+Creation of the environment
+`virtualenv venv`
+
+Activating the environment
+`source venv/bin/activate`
+
+### Requirements
+
+The list of dependencies can be found in the file requirements.txt
+
+- opencv_python==4.4.0.46
+- numpy==1.19.2
+- astropy==4.2
+- PySimpleGUI==4.38.0
+- lsq-ellipse==2.0.1
+
+For an automatic installation type :
+
+ `pip install -r requirements.txt` 
+
+
+## Launching & Using
+
+- In the pySimpleGUI window enter the name of the ser file to process
+
+- Tilt angle: if at zero automatic calculation, if value different from zero the calculation will use this value
+
+ - SY/SX ratio: if at zero automatic calculation, if different from zero the calculation will use this value
+
+- Check the box to display a black disk on the png image whose thresholds allow to highlight the protuberances
+
+- Check the box to save in fits only the two final images _recon.fits and _clahe.fits
+
+- Shift: shift in pixels from the minimum of the line to reconstruct on another wavelength
+example: shift of n pixels to reconstruct the continuum
+
+
+- When the final 4 images are displayed - press "enter" to exit or let the one minute delay run
+
+- If more than one ser file is selected, the time delay is reduced to 10 ms:
+
+    The following files are stored in the ser file directory
+    - xx_mean.fits: average image of all ser video frames in the spectrum
+    - xx_img.fits: raw monochromatic image
+    - xx_corr.fits: image corrected for outliers
+    - xx_circle.fits: circularized image
+    - xx_flat.fits: flat corrected image
+    - xx_recon.fits: final image, corrected for slant
+    - xx_clahe.fits: final image, processed by Contrast Local Adapative Histogram Enhancement (CLAHE)
