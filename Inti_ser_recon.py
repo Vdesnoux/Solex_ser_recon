@@ -13,6 +13,11 @@ Front end de traitements spectro helio de fichier ser
 automatiquement
 - sauvegarde fichier avec pixel shift in filename if shift<>0
 -----------------------------------------------------------------------------------------------------------------
+
+version 16 sept 2021 - antibes
+- back to circle display of black disk, not ellipse to really check deviation from circle
+- adjust black disk size versus disk edge with disk_limit_percent variable
+
 version 12 sept 2021 - antibes
 - affichage disque noir et seuils protus sur suggestion de mattC
 
@@ -245,7 +250,7 @@ for serfile in serfiles:
         sc = 1
     
     # Lecture et affiche image disque brut
-    ImgFile=basefich+'_img.fits'
+    ImgFile=basefich+'_raw.fits'
     hdulist = fits.open(ImgFile, memmap=False)
     hdu=hdulist[0]
     myspectrum=hdu.data
@@ -336,27 +341,30 @@ for serfile in serfiles:
             y0=cercle[1]
             wi=round(cercle[2]*0.998)
             he=round(cercle[3]*0.998)
-    
-            r=int(min(wi,he)-3)
-            r=int(r-round(0.002*r))
-            #c=(0,0,0)
-            #frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
-            frame_contrasted3=cv2.ellipse(frame_contrasted3, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC apply tilt, change color to black
+        
+        r=int(min(wi,he)-3)
+        r=int(r-round(0.002*r))
+        #c=(0,0,0)
+        frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
+        #frame_contrasted3=cv2.ellipse(frame_contrasted3, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC apply tilt, change color to black
         cv2.imshow('protus',frame_contrasted3)
         #cv2.waitKey(0)
     
     else:
         # hide disk before setting max threshold
+        disk_limit_percent=0.01 # black disk radius inferior by 1% to disk edge
         frame2=np.copy(frame)
         if cercle[0]!=0:
             x0=cercle[0]
             y0=cercle[1]
-            wi=round(cercle[2]*0.998)
-            he=round(cercle[3]*0.998)
-        #r=int(min(wi,he)-3)
-        #r=int(r-round(0.002*r))
-        #c=(0,0,0)
-        frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
+            wi=round(cercle[2])
+            he=round(cercle[3])
+        r=(min(wi,he))
+        r=int(r- round(r*disk_limit_percent))
+        print("r: ",r)
+        # prefer to really see deviation from circle
+        frame_contrasted3=cv2.circle(frame2, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
+        #frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
         frame1=np.copy(frame2)
         Threshold_Upper=np.percentile(frame1,99.9999)*0.8  #still preference for high contrast
         Threshold_low=0

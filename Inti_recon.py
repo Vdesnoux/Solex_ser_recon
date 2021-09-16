@@ -6,6 +6,8 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+version 12 sept 2021 - antibes
+- affichage disque noir et seuils protus sur suggestion de mattC
 
 Version du 8 sept 2021 - paris
 - Augmente à 3 decimales l'affichage angle et ratio scaling
@@ -736,7 +738,7 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         wi=round(EllipseFit[1]) # diametre
         he=round(EllipseFit[2])
         cercle=[xc,yc,wi,he]
-        r=round(min(wi-5,he-5)-3)
+        r=round(min(wi-5,he-5)-4)
         logme('Final SY/SX :'+ "{:+.3f}".format(he/wi))
         logme('Centre xc,yc et rayon : '+str(xc)+' '+str(yc)+' '+str(int(r)))
 
