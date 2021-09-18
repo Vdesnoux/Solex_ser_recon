@@ -361,12 +361,11 @@ for serfile in serfiles:
             he=round(cercle[3])
         r=(min(wi,he))
         r=int(r- round(r*disk_limit_percent))
-        print("r: ",r)
         # prefer to really see deviation from circle
         frame_contrasted3=cv2.circle(frame2, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
         #frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
         frame1=np.copy(frame2)
-        Threshold_Upper=np.percentile(frame1,99.9999)*0.8  #still preference for high contrast
+        Threshold_Upper=np.percentile(frame1,99.9999)*0.75  #preference for high contrast
         Threshold_low=0
         #print('Threshold Lower prom', Threshold_low)
         #print('Threshold Upper prom', Threshold_Upper)

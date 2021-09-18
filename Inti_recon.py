@@ -6,6 +6,10 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+version 18 septembre 2021 - antibes
+- gere depassement indices avec le shift
+- ajuste de 64000 a 64500 le clamp pour la saturation
+
 version 12 sept 2021 - antibes
 - affichage disque noir et seuils protus sur suggestion de mattC
 
@@ -346,7 +350,11 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         
     # init vector to speed up from Andrew & Doug Smiths 
     ind_l = (np.asarray(fit)[:, 0] + np.ones(ih) * (LineRecal + shift)).astype(int)
+    ind_l[(ind_l)>iw-1]=iw-1
+    ind_l[(ind_l)<=0]=0
     ind_r = (ind_l + np.ones(ih)).astype(int)
+    ind_r[(ind_r)>iw-1]=iw-1
+    ind_r[(ind_r)<=0]=0
     left_weights = np.ones(ih) - np.asarray(fit)[:, 1]
     right_weights = np.ones(ih) - left_weights
     
@@ -372,8 +380,9 @@ def solex_proc(serfile,shift, flag_display, ratio_fixe,sfit_onlyfinal,ang_tilt):
         right_col = img[np.arange(ih), ind_r]
         
         # prevent saturation overflow for very high bright spots
-        left_col[left_col>64000]=64000
-        right_col[right_col>64000]=64000
+        left_col[left_col>64500]=64500
+        right_col[right_col>64500]=64500
+        
         IntensiteRaie = left_col*left_weights + right_col*right_weights
         
         #ajoute au tableau disk 
