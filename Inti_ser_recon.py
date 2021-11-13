@@ -12,7 +12,17 @@ Front end de traitements spectro helio de fichier ser
 - ajout d'une zone pour entrer un ratio fixe et un angle de tilt fixe. Si reste à zero alors il sera calculé
 automatiquement
 - sauvegarde fichier avec pixel shift in filename if shift<>0
+
 -----------------------------------------------------------------------------------------------------------------
+version du 26 sept 2021
+- ajoute boucle pour generer images doppler et continuum
+- flag dans ui pour activer ou pas  doppler et cont
+- ajout pixel shift dans noms d1 et d2
+- fichier ini en yaml avec valeurs dec dop et cont stockées
+
+
+version 18 sept 2021 - antibes
+- reserre un peu seuils pour la visu des protuberances
 
 version 16 sept 2021 - antibes
 - back to circle display of black disk, not ellipse to really check deviation from circle
@@ -51,6 +61,8 @@ import os
 import sys
 import Inti_recon as sol
 from astropy.io import fits
+from Inti_functions import *
+import yaml
 #import tkinter as tk
 
 
@@ -74,7 +86,7 @@ def collapse(layout, key):
 
 
 
-def UI_SerBrowse (WorkDir):
+def UI_SerBrowse (WorkDir, dec_pix_dop, dec_pix_cont):
     """
     Parameters
     ----------
@@ -85,14 +97,16 @@ def UI_SerBrowse (WorkDir):
     -------
     Filenames : TYPE string
         liste des fichiers selectionnés, avec leur extension et le chemin complet
-    Shift : Type string
-        Ecart en pixel demandé pour reconstruire le disque 
-        sur une longeur d'onde en relatif par rapport au centre de la raie  
+    Shift : Type array of int
+        Ecart en pixel demandé pour reconstruire le disque, les deux images 
+        doppler et le continuum sur une longeur d'onde en relatif par rapport au centre de la raie  
     ratio_fixe : ratio Y/X en fixe, si egal à zéro alors calcul automatique
+    angle_fixe : angle de tilt, si egal à zéro alors calcul automatique
     flag_isplay: affiche ou non la construction du disque en temps réel
     """
     sg.theme('Dark2')
     sg.theme_button_color(('white', '#500000'))
+
     
     section1 = [
             [sg.Checkbox('Affiche reconstruction en direct', default=False, key='-DISP-')],
@@ -101,24 +115,27 @@ def UI_SerBrowse (WorkDir):
             [sg.Text('Angle Tilt en degrés (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-TILT-')]
             ]
     
+    tab1_layout = [
+        [sg.Text('Nom du fichier', size=(15, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
+         sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
+        #### Section 1 part ####
+        [sg.T(SYMBOL_UP, enable_events=True, k='-OPEN SEC1-', text_color='white'), sg.T('Advanced', enable_events=True, text_color='white', k='-OPEN SEC1-TEXT')],
+        [collapse(section1, '-SEC1-')],
+        [sg.Text('Decalage pixels',size=(15,1)),sg.Input(default_text='0',size=(5,1),key='-DX-',enable_events=True)]
+        ]
     
+    tab2_layout =[
+        [sg.Checkbox('Calcul images doppler et continuum', default=False, key='-DOPCONT-')],
+        [sg.Text('Decalage doppler',size=(15,1)),sg.Input(default_text=dec_pix_dop,size=(5,1),key='-DopX-',enable_events=True)],
+        [sg.Text('Decalage continuum',size=(15,1)),sg.Input(default_text=dec_pix_cont,size=(5,1),key='-ContX-',enable_events=True)]
+        ]
     layout = [
-
-    [sg.Text('Nom du fichier', size=(15, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
-     sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
+        [sg.TabGroup([[sg.Tab('General', tab1_layout), sg.Tab('Doppler & Continuum', tab2_layout,)]],tab_background_color='#404040')],  
+        [sg.Button('Ok', size=(14,1)), sg.Cancel()],
+        [sg.Text('Inti V3.1.1 by V.Desnoux et.al. ', size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
+        ] 
     
-    #[sg.Checkbox('Sauve uniquement fits _recon et _clahe ', default=True, key='-SFIT-')],
-    #### Section 1 part ####
-    [sg.T(SYMBOL_UP, enable_events=True, k='-OPEN SEC1-', text_color='white'), sg.T('Advanced', enable_events=True, text_color='white', k='-OPEN SEC1-TEXT')],
-    [collapse(section1, '-SEC1-')],
-    #[sg.Text('Ratio SY/SX (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-RATIO-')],
-    #[sg.Text('Angle Tilt en degrés (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-TILT-')],
-    [sg.Text('Decalage pixel',size=(15,1)),sg.Input(default_text='0',size=(5,1),key='-DX-',enable_events=True)],  
-    [sg.Button('Ok', size=(14,1)), sg.Cancel()],
-    [sg.Text('Inti V3.0.1 by V.Desnoux et.al. ', size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
-    ] 
-    
-    window = sg.Window('Processing', layout, finalize=True)
+    window = sg.Window('INTI', layout, finalize=True)
     opened1 = False
     window['-SEC1-'].update(visible=opened1)
     
@@ -141,18 +158,27 @@ def UI_SerBrowse (WorkDir):
     window.close()
                
     FileNames=values['-FILE-']
+
     if FileNames==None :
             FileNames=''
-    Shift=values['-DX-']
-    
-    flag_display=values['-DISP-']
+    Shift=[]
+    Flags={}
+    Shift.append(int(values['-DX-']))
+    Shift.append(int(values['-DopX-']))
+    Shift.append(int(values['-ContX-']))
+    Flags["RTDISP"]=values['-DISP-']
+    Flags["DOPCONT"]=values['-DOPCONT-']
+    Flags["ALLFITS"]=values['-SFIT-']
+    #flag_display=values['-DISP-']
+    #flag_dopcont=values['-DOPCONT-']
+    #flag_dopcont=True
     #flag_display=False
     ratio_fixe=float(values['-RATIO-'])
-    sfit_onlyfinal=values['-SFIT-']
+    #sfit_onlyfinal=values['-SFIT-']
     #sfit_onlyfinal=False
     ang_tilt=values['-TILT-']
     
-    return FileNames, Shift, flag_display, ratio_fixe, sfit_onlyfinal,ang_tilt
+    return FileNames, Shift, Flags, ratio_fixe,ang_tilt
 
 """
 -------------------------------------------------------------------------------------------
@@ -160,23 +186,33 @@ Program starts here !
 --------------------------------------------------------------------------------------------
 """
 
-# inti.ini is a bootstart file to read last directory used by app
+# inti.yaml is a bootstart file to read last directory used by app
 # this file is stored in the module directory
 
+#my_ini=os.path.dirname(sys.argv[0])+'/inti.yaml'
+my_ini=os.getcwd()+'/inti.yaml'
+my_dictini={'directory':'', 'dec doppler':3, 'dec cont':15}
+#print('myini de depart:', my_ini)
+
 try:
-    mydir_ini=os.path.dirname(sys.argv[0])+'/inti.ini'
+    #my_ini=os.path.dirname(sys.argv[0])+'/inti.yaml'
     #print('mon repertoire : ', mydir_ini)
-    with open(mydir_ini, "r") as f1:
-        param_init = f1.readlines()
-        WorkDir=param_init[0]
+    with open(my_ini, "r") as f1:
+        my_dictini = yaml.safe_load(f1)
 except:
-    WorkDir=''
+   print('creating inti.yaml as: ', my_ini)
+
+WorkDir=my_dictini['directory']
+dec_pix_dop=int(my_dictini['dec doppler'])
+dec_pix_cont=int(my_dictini['dec cont'])
 
 # Recupere paramatres de la boite de dialogue
-serfiles, Shift, flag_display, ratio_fixe, sfit_onlyfinal, ang_tilt = UI_SerBrowse(WorkDir)
+serfiles, Shift, Flags, ratio_fixe,ang_tilt = UI_SerBrowse(WorkDir, dec_pix_dop, dec_pix_cont)
 serfiles=serfiles.split(';')
 
 
+
+    
 # pour gerer la tempo des affichages des images resultats dans cv2.waitKey
 # si plusieurs fichiers à traiter
 if len(serfiles)==1:
@@ -196,44 +232,48 @@ for serfile in serfiles:
     base=os.path.basename(serfile)
     basefich=os.path.splitext(base)[0]
     if base=='':
-        print('erreur nom de fichier : ',serfile)
+        logme('erreur nom de fichier : '+serfile)
         sys.exit()
     
-    # met a jour le repertoire si on a changé dans le fichier ini
-    try:
-        with open(mydir_ini, "w") as f1:
-            f1.writelines(WorkDir)
-    except:
-        pass
+    # met a jour le repertoire et les flags dans le fichier ini, oui a chaque fichier pour avoir le bon rep
+    my_dictini['directory']=WorkDir
+    my_dictini['dec doppler']=Shift[1]
+    my_dictini['dec cont']=Shift[2]
     
+    try:
+        with open(my_ini, "w") as f1:
+            yaml.dump(my_dictini, f1, sort_keys=False)
+    except:
+        logme ('error saving inti.yaml as : '+my_ini)
+        
+
 
     # appel au module d'extraction, reconstruction et correction
     #
     # basefich: nom du fichier ser sans extension et sans repertoire
     # dx: decalage en pixel par rapport au centre de la raie 
     
-    try:
-        Shift=int(Shift)
-    except:
-        Shift=0
     
-    frame, header, cercle=sol.solex_proc(serfile,Shift,flag_display,ratio_fixe,sfit_onlyfinal,ang_tilt)
+    frames, header, cercle=sol.solex_proc(serfile,Shift,Flags,ratio_fixe,ang_tilt)
+    
+
+    
     
     #t0=time.time()
     base=os.path.basename(serfile)
     basefich='_'+os.path.splitext(base)[0]
     
-    if Shift != 0 :
+    #if Shift != 0 :
         #add shift value in filename to not erase previous file
-        basefich=basefich+'_dp'+str(Shift) # ajout '_' pour avoir fichier en tete dans explorer/finder
+        #basefich=basefich+'_dp'+str(Shift) # ajout '_' pour avoir fichier en tete dans explorer/finder
 
-    ih=frame.shape[0]
-    newiw=frame.shape[1]
+    ih=frames[0].shape[0]
+    newiw=frames[0].shape[1]
 
     top_w=0
     left_w=0
-    tw=180
-    lw=32
+    tw=150
+    lw=34
     
     
     # my screensize is 1536x864 - harcoded as tk.TK() produces an error in spyder
@@ -287,16 +327,17 @@ for serfile in serfiles:
     cv2.moveWindow('clahe', top_w, left_w)
     cv2.resizeWindow('clahe',(int(newiw*sc), int(ih*sc)))
     
+    
     # create a CLAHE object (Arguments are optional)
     #clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(5,5))
     clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
-    cl1 = clahe.apply(frame)
+    cl1 = clahe.apply(frames[0])
     
     # png image generation
     # image leger seuils
-    frame1=np.copy(frame)
-    Seuil_bas=np.percentile(frame, 25)
-    Seuil_haut=np.percentile(frame,99.9999)
+    frame1=np.copy(frames[0])
+    Seuil_bas=np.percentile(frame1, 25)
+    Seuil_haut=np.percentile(frame1,99.9999)
     frame1[frame1>Seuil_haut]=Seuil_haut
     #print('seuil bas', Seuil_bas)
     #print('seuil haut', Seuil_haut)
@@ -310,7 +351,7 @@ for serfile in serfiles:
     cv2.imshow('Raw',Disk2)
     
     # image seuils serres 
-    frame1=np.copy(frame)
+    frame1=np.copy(frames[0])
     sub_frame=frame1[5:,:-5]
     Seuil_haut=np.percentile(sub_frame,99.999)
     Seuil_bas=(Seuil_haut*0.25)
@@ -323,17 +364,13 @@ for serfile in serfiles:
     cv2.imshow('contrast',frame_contrasted2)
     #cv2.waitKey(0)
     
-    if 2==1:   #improvements suggested by mattC to hide sun with disk
+    if 2==1:   
         # image seuils protus original
-        frame1=np.copy(frame)
+        frame1=np.copy(frames[0])
         Seuil_haut=np.percentile(frame1,99.9999)*0.18
         Seuil_bas=0
-        #print('seuil bas protu', Seuil_bas)
-        #print('seuil haut protu', Seuil_haut)
-        frame1[frame1>Seuil_haut]=Seuil_haut
-        fc2=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
-        fc2[fc2<0]=0
-        frame_contrasted3=np.array(fc2, dtype='uint16')
+        frame1=seuil_image_force(frame1, Seuil_haut, Seuil_bas)
+        frame_contrasted3=np.array(frame1, dtype='uint16')
         
         #calcul du disque noir pour mieux distinguer les protuberances
         if cercle[0]!=0:
@@ -350,10 +387,11 @@ for serfile in serfiles:
         cv2.imshow('protus',frame_contrasted3)
         #cv2.waitKey(0)
     
-    else:
+    #improvements suggested by mattC to hide sun with disk
+    else:           
         # hide disk before setting max threshold
-        disk_limit_percent=0.01 # black disk radius inferior by 1% to disk edge
-        frame2=np.copy(frame)
+        disk_limit_percent=0.001 # black disk radius inferior by 1% to disk edge
+        frame2=np.copy(frames[0])
         if cercle[0]!=0:
             x0=cercle[0]
             y0=cercle[1]
@@ -362,17 +400,13 @@ for serfile in serfiles:
         r=(min(wi,he))
         r=int(r- round(r*disk_limit_percent))
         # prefer to really see deviation from circle
-        frame_contrasted3=cv2.circle(frame2, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
+        fc3=cv2.circle(frame2, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
         #frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
-        frame1=np.copy(frame2)
-        Threshold_Upper=np.percentile(frame1,99.9999)*0.75  #preference for high contrast
+        frame1=np.copy(fc3)
+        Threshold_Upper=np.percentile(frame1,99.9999)*0.5  #preference for high contrast
         Threshold_low=0
-        #print('Threshold Lower prom', Threshold_low)
-        #print('Threshold Upper prom', Threshold_Upper)
-        frame1[frame1>Threshold_Upper]=Threshold_Upper
-        fc2=(frame1-Threshold_low)* (65000/(Threshold_Upper-Threshold_low))
-        fc2[fc2<0]=0
-        frame_contrasted3=np.array(fc2, dtype='uint16')
+        img_seuil=seuil_image_force(frame1, Threshold_Upper, Threshold_low)
+        frame_contrasted3=np.array(img_seuil, dtype='uint16')
         cv2.imshow('protus',frame_contrasted3)
     
     Seuil_bas=np.percentile(cl1, 25)
@@ -381,7 +415,64 @@ for serfile in serfiles:
     cc[cc<0]=0
     cc=np.array(cc, dtype='uint16')
     cv2.imshow('clahe',cc)
+    
+    if len(frames) >1:
+        if len(frames)>3:
+            #creation windows CV2 continuum
+            top_w=top_w+tw
+            left_w=left_w+lw
+            cv2.namedWindow('continuum', cv2.WINDOW_NORMAL)
+            cv2.moveWindow('continuum', top_w, left_w)
+            cv2.resizeWindow('continuum',(int(newiw*sc), int(ih*sc)))
+            # seuils image continuum 
+            frameC=np.copy(frames[3])
+            sub_frame=frameC[5:,:-5]
+            Seuil_haut=np.percentile(sub_frame,99.999)
+            Seuil_bas=(Seuil_haut*0.25)
+            #print('seuil bas HC', Seuil_bas)
+            #print('seuil haut HC', Seuil_haut)
+            frameC[frameC>Seuil_haut]=Seuil_haut
+            fcc=(frameC-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
+            fcc[fcc<0]=0
+            frame_continuum=np.array(fcc, dtype='uint16')
+            # display image
+            cv2.imshow('continuum',frame_continuum)
+            # sauvegarde en png de continuum
+            cv2.imwrite(basefich+'_cont.png',frame_continuum)
+        
+        
+        top_w=top_w+tw
+        left_w=left_w+lw
+        cv2.namedWindow('doppler', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('doppler', top_w, left_w)
+        cv2.resizeWindow('doppler',(int(newiw*sc), int(ih*sc)))
+    
+        #on se tente une image couleur...
+        flag_erreur_doppler=False
+        try :
+            img_doppler=np.zeros([ih, frames[1].shape[1], 3],dtype='uint16')
+            moy=np.array(((frames[1]+frames[2])/2), dtype='uint16')
+            i2,Seuil_haut, Seuil_bas=seuil_image(moy)
+            i3=seuil_image_force(frames[2],Seuil_haut, Seuil_bas)
+            i1=seuil_image_force (frames[1],Seuil_haut, Seuil_bas)
+            #i1,Seuil_haut, Seuil_bas=seuil_image(frames[1])
+            #i3,Seuil_haut, Seuil_bas=seuil_image(frames[2])
+            img_doppler[:,:,0] = i1
+            img_doppler[:,:,1] = i2
+            img_doppler[:,:,2] = i3
+            cv2.imshow('doppler',img_doppler)
+       
+        except:
+            print ('erreur image doppler')
+            flag_erreur_doppler=True
+            cv2.destroyWindow('doppler')
+            pass
 
+        #sauvegarde en png de continuum
+        if flag_erreur_doppler==False:
+            cv2.imwrite(basefich+'_doppler.png',img_doppler)
+
+    
     #sauvegarde en png disk quasi sans seuillage
     cv2.imwrite(basefich+'_raw.png',Disk2)
     #sauvegarde en png disk quasi seuils max
@@ -392,6 +483,9 @@ for serfile in serfiles:
     cv2.imwrite(basefich+'_protus.png',frame_contrasted3)
     #sauvegarde en png de clahe
     cv2.imwrite(basefich+'_clahe.png',cc)
+    
+    
+
     
     """
     #create colormap
@@ -419,7 +513,7 @@ for serfile in serfiles:
 
     cv2.waitKey(tempo)
     #sauvegarde le fits
-    frame2=np.copy(frame)
+    frame2=np.copy(frames[0])
     frame2=np.array(cl1, dtype='uint16')
     DiskHDU=fits.PrimaryHDU(frame2,header)
     DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')

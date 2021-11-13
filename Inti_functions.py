@@ -15,8 +15,13 @@ import ellipse as el
 from matplotlib.patches import Ellipse
 
 """
+Version du 19 oct 
+- variable debug 
+- utilitaire de seuillage image
+
 Version du 19 aout
 - correction de la formule de matt  pour le calcul de l'heure des fichiers SER 
+
 
 """
 
@@ -41,13 +46,15 @@ def detect_bord (img, axis, offset):
     #offset decalage la coordonnée pour prendre en compte le lissage gaussien
     ih=img.shape[0]
     iw=img.shape[1]
+    debug=False
     if axis==1:
         # Determination des limites de la projection du soleil sur l'axe Y
         #ymean=np.mean(img[10:,:-10],1)
         ymean=np.mean(img,1)
-        #plt.plot(ymean)
-        #plt.title('Profil Y')
-        #plt.show()
+        if debug:
+            plt.plot(ymean)
+            plt.title('Profil Y')
+            plt.show()
         ymean=gaussian_filter1d(ymean, 11)
         yth=np.gradient(ymean)
         y1=yth.argmax()-offset
@@ -55,12 +62,13 @@ def detect_bord (img, axis, offset):
         if y1<=11:
             y1=0
         if y2>ih-11:
-            y2=ih
+            y2=ih-1
         a1=y1
         a2=y2
-        #plt.plot(yth)
-        #plt.title('Gradient Profil Y - filtre gaussien')
-        #plt.show()
+        if debug:
+            plt.plot(yth)
+            plt.title('Gradient Profil Y - filtre gaussien')
+            plt.show()
     else:
         # Determination des limites de la projection du soleil sur l'axe X
         # Elimine artefact de bords
@@ -143,11 +151,17 @@ def detect_y_of_x (img, x1,x2):
     
     return y_x1,y_x2
 
-def circularise (img,iw,ih,ratio_fixe): #methode des limbes
+def circularise (img,iw,ih,ratio_fixe,*args): #methode des limbes
 
-    y1,y2=detect_bord (img, axis=1,offset=5)    # bords verticaux
+    if len(args)==0: 
+        y1,y2=detect_bord (img, axis=1,offset=5)    # bords verticaux
+    else:
+        y1=args[0]
+        y2=args[1]
+        #print ("force y,y2 ",y1,y2)
+    
     x1,x2=detect_bord (img, axis=0,offset=5)    # bords horizontaux
-    logme('Position X des limbes droit et gauche x1, x2 : '+str(x1)+' '+str(x2))
+    #logme('Position X des limbes droit et gauche x1, x2 : '+str(x1)+' '+str(x2))
     
     TailleX=int(x2-x1)
     if TailleX+10<int(iw/5) or TailleX+10>int(iw*.99):
@@ -161,7 +175,7 @@ def circularise (img,iw,ih,ratio_fixe): #methode des limbes
     else:
         y_x1,y_x2=detect_y_of_x(img, x1, x2)
         flag_nobords=False
-        logme('Position Y des limbes droit et gauche x1, x2 : '+str(y_x1)+' '+str(y_x2))
+        #logme('Position Y des limbes droit et gauche x1, x2 : '+str(y_x1)+' '+str(y_x2))
         # on calcul la coordonnée moyenne du grand axe horizontal 
         ymoy=int((y_x2+y_x1)/2)
         #ymoy=y_x1
@@ -186,9 +200,9 @@ def circularise (img,iw,ih,ratio_fixe): #methode des limbes
         x0= int((x1+((x2-x1)*0.5))*ratio)
         y0=y_x1
         cercle=[x0,y0, diam_cercle]
-        logme('Centre cercle x0,y0 et diamètreY, diamètreX :'+str(x0)+' '+str(y0)+' '+str(diam_cercle)+' '+str((x2-x1)))
+        #logme('Centre cercle x0,y0 et diamètreY, diamètreX :'+str(x0)+' '+str(y0)+' '+str(diam_cercle)+' '+str((x2-x1)))
         
-    logme('Ratio SY/SX :'+"{:.3f}".format(ratio))
+    #logme('Ratio SY/SX :'+"{:.3f}".format(ratio))
     
     if ratio >=50:
         logme('Rapport hauteur sur largeur supérieur à 50 - Exit')
@@ -241,12 +255,16 @@ def detect_noXlimbs (myimg):
     
     return flag_nobords
 
-def detect_edge (myimg,zexcl,disp_log):
+def detect_edge (myimg,zexcl, crop, disp_log):
     edgeX=[]
     edgeY=[]
-    
+    if crop!=0:
+        myimg_crop=myimg[crop:-crop,:]
+    else:
+        myimg_crop=myimg
     #detect si pas de limbes droits et/ou gauche
-    y1,y2=detect_bord (myimg, axis=1,offset=5)    # bords verticaux    
+    y1,y2=detect_bord (myimg_crop, axis=1,offset=5)    # bords verticaux
+    
     #mid=int((y2-y1)/2)+y1
 
     zone_fit=abs(y2-y1)
@@ -328,3 +346,19 @@ def fit_ellipse (myimg,X,disp_log):
 
 
     return EllipseFit, XE
+
+def seuil_image (img):
+    Seuil_haut=np.percentile(img,99.999)
+    Seuil_bas=(Seuil_haut*0.25)
+    img[img>Seuil_haut]=Seuil_haut
+    img_seuil=(img-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
+    img_seuil[img_seuil<0]=0
+    
+    return img_seuil, Seuil_haut, Seuil_bas
+
+def seuil_image_force (img, Seuil_haut, Seuil_bas):
+    img[img>Seuil_haut]=Seuil_haut
+    img_seuil=(img-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
+    img_seuil[img_seuil<0]=0
+    
+    return img_seuil
