@@ -260,15 +260,10 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     edgeY=[]
     if crop!=0:
         myimg_crop=myimg[crop:-crop,:]
-        #print("crop...", crop)
     else:
         myimg_crop=myimg
     #detect si pas de limbes droits et/ou gauche
     y1,y2=detect_bord (myimg_crop, axis=1,offset=5)    # bords verticaux
-    y1=y1+crop
-    y2=y2+crop
-    
-    #print(y1,y2)
     
     #mid=int((y2-y1)/2)+y1
 
@@ -329,7 +324,7 @@ def fit_ellipse (myimg,X,disp_log):
     
     
     if disp_log or debug_graphics:
-        print("Paramètres ellipse ............")
+        print()
         print(f'center: {center[0]:.3f}, {center[1]:.3f}')
         print(f'width: {width*2:.3f}')
         print(f'height: {height*2:.3f}')

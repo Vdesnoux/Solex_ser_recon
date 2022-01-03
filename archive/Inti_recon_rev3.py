@@ -615,8 +615,6 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
         # si mauvaise detection des bords en x alors on doit prendre toute l'image
         if flag_nobords:
             ydisk=np.median(img,1)
-            offset_y1=0
-            offset_y2=0
         else:
     
             seuil_haut=np.percentile(frame,97) 
@@ -911,7 +909,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
                 logme('ratio iteration2 :'+ str(ratio))
                 NewImg, newiw=circularise2(frame,newiw,ih,ratio)
                 frame=np.array(NewImg, dtype='uint16')
-                X= detect_edge (frame, zexcl=0.1,crop=crop, disp_log=False)
+                X= detect_edge (frame, zexcl=0.1, disp_log=False)
                 EllipseFit,XE=fit_ellipse(frame, X, disp_log=False)
                 
             if k==0:

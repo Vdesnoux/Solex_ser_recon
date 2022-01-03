@@ -14,10 +14,6 @@ automatiquement
 - sauvegarde fichier avec pixel shift in filename if shift<>0
 
 -----------------------------------------------------------------------------------------------------------------
-Version du 1er janv 2022
-- correction bug si tilt important avec offset de y1,y2 lié au crop
-- meilleure gestion des erreurs si mauvais scan
-
 version du 26 sept 2021
 - ajoute boucle pour generer images doppler et continuum
 - flag dans ui pour activer ou pas  doppler et cont
@@ -76,7 +72,6 @@ import PySimpleGUI as sg
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V3.1.2 by V.Desnoux et.al. '
 
 
 def collapse(layout, key):
@@ -137,7 +132,7 @@ def UI_SerBrowse (WorkDir, dec_pix_dop, dec_pix_cont):
     layout = [
         [sg.TabGroup([[sg.Tab('General', tab1_layout), sg.Tab('Doppler & Continuum', tab2_layout,)]],tab_background_color='#404040')],  
         [sg.Button('Ok', size=(14,1)), sg.Cancel()],
-        [sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
+        [sg.Text('Inti V3.1.1 by V.Desnoux et.al. ', size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
         ] 
     
     window = sg.Window('INTI', layout, finalize=True)
@@ -261,6 +256,7 @@ for serfile in serfiles:
     
     frames, header, cercle=sol.solex_proc(serfile,Shift,Flags,ratio_fixe,ang_tilt)
     
+
     
     
     #t0=time.time()
@@ -392,7 +388,7 @@ for serfile in serfiles:
         #cv2.waitKey(0)
     
     #improvements suggested by mattC to hide sun with disk
-    else :           
+    else:           
         # hide disk before setting max threshold
         disk_limit_percent=0.001 # black disk radius inferior by 1% to disk edge
         frame2=np.copy(frames[0])
@@ -401,22 +397,17 @@ for serfile in serfiles:
             y0=cercle[1]
             wi=round(cercle[2])
             he=round(cercle[3])
-            r=(min(wi,he))
-            r=int(r- round(r*disk_limit_percent))
-            # prefer to really see deviation from circle
-            fc3=cv2.circle(frame2, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
-            #frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
-            frame1=np.copy(fc3)
-            Threshold_Upper=np.percentile(frame1,99.9999)*0.5  #preference for high contrast
-            Threshold_low=0
-            img_seuil=seuil_image_force(frame1, Threshold_Upper, Threshold_low)
-            frame_contrasted3=np.array(img_seuil, dtype='uint16')
-            cv2.imshow('protus',frame_contrasted3)
-        else:
-            print("Erreur disque occulteur")
-            frame_contrasted3=frame_contrasted
-        
-
+        r=(min(wi,he))
+        r=int(r- round(r*disk_limit_percent))
+        # prefer to really see deviation from circle
+        fc3=cv2.circle(frame2, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
+        #frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
+        frame1=np.copy(fc3)
+        Threshold_Upper=np.percentile(frame1,99.9999)*0.5  #preference for high contrast
+        Threshold_low=0
+        img_seuil=seuil_image_force(frame1, Threshold_Upper, Threshold_low)
+        frame_contrasted3=np.array(img_seuil, dtype='uint16')
+        cv2.imshow('protus',frame_contrasted3)
     
     Seuil_bas=np.percentile(cl1, 25)
     Seuil_haut=np.percentile(cl1,99.9999)*1.05
