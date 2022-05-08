@@ -15,11 +15,14 @@ import ellipse as el
 from matplotlib.patches import Ellipse
 
 """
-Version du 19 oct 
+Version 23 avril 2022
+- Christian: ajout fonction de detection du min local d'une raie GET_LINE_POS_ABSORPTION
+
+Version du 19 oct 2021
 - variable debug 
 - utilitaire de seuillage image
 
-Version du 19 aout
+Version du 19 aout 2021
 - correction de la formule de matt  pour le calcul de l'heure des fichiers SER 
 
 
@@ -165,7 +168,7 @@ def circularise (img,iw,ih,ratio_fixe,*args): #methode des limbes
     
     TailleX=int(x2-x1)
     if TailleX+10<int(iw/5) or TailleX+10>int(iw*.99):
-        logme('Pas de limbe solaire pour determiner la geometrie')
+        logme('Pas de limbe solaire pour determiner la géométrie')
         logme('Reprendre les traitements en manuel avec ISIS')
 
         #print(TailleX, iw)
@@ -205,7 +208,7 @@ def circularise (img,iw,ih,ratio_fixe,*args): #methode des limbes
     #logme('Ratio SY/SX :'+"{:.3f}".format(ratio))
     
     if ratio >=50:
-        logme('Rapport hauteur sur largeur supérieur à 50 - Exit')
+        logme('Erreur, rapport hauteur sur largeur supérieur à 50.')
         sys.exit()
     #nouvelle taille image en y 
     newiw=int(iw*ratio)
@@ -249,8 +252,8 @@ def detect_noXlimbs (myimg):
     iw=myimg.shape[1]
     
     if TailleX+10<int(iw/5) or TailleX+10>int(iw*.99):
-        logme('Pas de limbe solaire pour determiner la geometrie')       
-        logme('Reprendre les traitements en manuel avec ISIS')
+        logme('Pas de limbe solaire pour déterminer la géometrie')       
+        logme('Reprendre les traitements en manuel avec ISIS.')
         flag_nobords=True
     
     return flag_nobords
@@ -367,3 +370,50 @@ def seuil_image_force (img, Seuil_haut, Seuil_bas):
     img_seuil[img_seuil<0]=0
     
     return img_seuil
+
+
+#=========================================================================================
+# GET_LINE_POS_ABSORPTION
+# Retourne la coordonnée du coeur d'une raie d'aborption (ajustement d'une parabole 3 pt)
+# dans le tableau "profil". La position approximative de la raie est "pos".
+# La largeur de la zone de recherche est "seach_wide".
+# =======================================================================================
+def get_line_pos_absoption(profil, pos, search_wide):
+            
+    w = search_wide
+    
+    p1 = int(pos - w/2)
+    p2 = int(pos + w/2)
+    
+    if p1<0:  # quelques contrôles
+        p1 = 0 
+    if p2>profil.shape[0]:
+        p2 = profil.shape[0]
+        
+    x = profil[p1:p2]         # sous-profil
+    
+    xmin = np.argmin(x)       # coordonnée du point à valeur minimale dans le sous profil
+    
+    
+    # On calcule une parabole qui passe par les deux points adjacents 
+    y = [x[xmin-1], x[xmin], x[xmin+1]]   
+    xx = [0.0, 1.0, 2.0]        
+    z = np.polyfit(xx, y, 2, full = True)
+    
+    coefficient = z[0]   # coefficients de la parabole
+    
+    # On charche le minima dans la parabole avec un pas de 0,01 pixel
+    xxx = np.arange(0.0,2.0,0.01)
+    pmin= 1.0e10
+    for px in xxx:
+        v = coefficient[0] * px * px + coefficient[1] * px + coefficient[2]
+        if v < pmin:
+            pmin = v
+            xpmin = px
+        
+    posx = p1 + xmin - 1 + xpmin
+  
+    return posx    
+
+
+

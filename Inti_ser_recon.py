@@ -9,11 +9,25 @@ Front end de traitements spectro helio de fichier ser
 - interface pour selectionner un ou plusieurs fichiers
 - appel au module inti_recon qui traite la sequence et genere les fichiers fits
 - decalage en longueur d'onde avec Shift
+
 - ajout d'une zone pour entrer un ratio fixe et un angle de tilt fixe. Si reste à zero alors il sera calculé
 automatiquement
 - sauvegarde fichier avec pixel shift in filename if shift<>0
 
 -----------------------------------------------------------------------------------------------------------------
+version du 27 avril 2022 - Paris
+- correction bug multiple fichier test si pas de nom de fichier
+
+version du 23 avril 2022 - Paris
+- ajout onglet de calcul d'une sequence doppler
+- ajout de generation film mp4
+- ajout onglet de la fonction magnetogramme
+- ajout de memoire de boucle sur fichier traité pour gérér sequence b et v 
+- creation d'une version anglaise par swith LG a la compil
+- ajout de sauvegarde des coefficients de polynomes
+- ajout de sauvegarde angle de tilt et facteur echelle avec flag dans advanced
+
+
 Version du 1er janv 2022
 - correction bug si tilt important avec offset de y1,y2 lié au crop
 - meilleure gestion des erreurs si mauvais scan
@@ -45,7 +59,7 @@ Version 19 aout 2021
 - ajout '_' pour avoir fichier en tete dans explorer/finder
 - ajout de _dp pour valeur de decalage différente de zéro dans noms de fichier pour eviter d'ecraser le precedent traitement
 
-Version 16 juillet 2021
+Version 16 juillet 
 - remplacement des methodes des limbes par fit_ellipse
 - modification code avec code de Doug & Andrew Smith pour acceleration stupefiante
     o vectorisation dans calcul extraction des intensités pour reconstruction du disque
@@ -63,21 +77,27 @@ import numpy as np
 import cv2
 import os
 import sys
+#import Inti_recon as sol - test gestion multi decalage
 import Inti_recon as sol
 from astropy.io import fits
 from Inti_functions import *
 import yaml
-#import tkinter as tk
+# import shutil
+# import tkinter as tk
 
 
 #import time
 
 import PySimpleGUI as sg
 
+# -------------------------------------------------------------
+global LG # Langue de l'interfacer (1 = FR ou 2 = US)
+LG = 1
+# -------------------------------------------------------------
+
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V3.1.2 by V.Desnoux et.al. '
-
+current_version = 'Inti V3.2.2 by V.Desnoux et.al. '
 
 def collapse(layout, key):
     """
@@ -91,7 +111,7 @@ def collapse(layout, key):
 
 
 
-def UI_SerBrowse (WorkDir, dec_pix_dop, dec_pix_cont):
+def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, poly):
     """
     Parameters
     ----------
@@ -113,32 +133,111 @@ def UI_SerBrowse (WorkDir, dec_pix_dop, dec_pix_cont):
     sg.theme_button_color(('white', '#500000'))
 
     
-    section1 = [
-            [sg.Checkbox('Affiche reconstruction en direct', default=False, key='-DISP-')],
-            [sg.Checkbox('Ne sauve pas fichiers fits intermédiaires ', default=True, key='-SFIT-')],
-            [sg.Text('Ratio SY/SX (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-RATIO-')],
-            [sg.Text('Angle Tilt en degrés (auto:0, fixe: valeur differente de zero) ', size=(45,1)), sg.Input(default_text='0', size=(5,1),key='-TILT-')]
+    if LG == 1:
+        section1 = [
+                [sg.Checkbox(' Affichage de la reconstruction en temps réel ', default=False, key='-DISP-')],
+                [sg.Checkbox(' Non sauvegarde des fichiers FITS intermédiaires', default=True, key='-SFIT-')],
+                [sg.Checkbox(' Force les valeurs tilt et facteur d\'echelle', default=False, key='-F_ANG_SXSY-')],
+                [sg.Text('Angle Tilt en degrés :', size=(15,1)), sg.Input(default_text=saved_tilt, size=(6,1),key='-TILT-')],
+                [sg.Text('Ratio SY/SX :', size=(15,1)), sg.Input(default_text=saved_ratio, size=(6,1),key='-RATIO-')]
+                ]
+    else:
+        section1 = [
+                [sg.Checkbox(' Real time reconstruction display ', default=False, key='-DISP-')],
+                [sg.Checkbox(' No intermediate files FITS saving', default=True, key='-SFIT-')],
+                [sg.Checkbox(' Force values of tilt and scale ratio', default=False, key='-F_ANG_SXSY-')],
+                [sg.Text('Tilt angle in degrees :', size=(15,1)), sg.Input(default_text=saved_tilt, size=(6,1),key='-TILT-')],
+                [sg.Text('SY/SX ratio :', size=(15,1)), sg.Input(default_text=saved_ratio, size=(6,1),key='-RATIO-')]
+                ]
+        
+    if LG == 1:
+        tab1_layout = [      
+            #### Section 1 part ####
+            [sg.T(SYMBOL_UP, enable_events=True, k='-OPEN SEC1-', text_color='white'), sg.T('Avancé', enable_events=True, text_color='white', k='-OPEN SEC1-TEXT')],
+            [collapse(section1, '-SEC1-')],
+            [sg.Text('Décalage en pixels :',size=(15,1)),sg.Input(default_text='0',size=(4,1),key='-DX-',enable_events=True)]
+            ]
+        
+        tab2_layout =[
+            [sg.Checkbox(' Calcul images Doppler et Continuum ', default=False, key='-DOPCONT-')],
+            [sg.Text('Decalage doppler :',size=(16,1)),sg.Input(default_text=dec_pix_dop,size=(4,1),key='-DopX-',enable_events=True)],
+            [sg.Text('Decalage continuum :',size=(16,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='-ContX-',enable_events=True)]
+            ]
+        
+        tab3_layout =[
+            [sg.Checkbox(' Synthèse d\'une séquence d\'images décalées spectralement ', default=False, key='-VOL-')],
+            [sg.Text('Plage en pixels :',size=(12,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='Volume',enable_events=True), sg.Text('+/- pixels')]
+            ]
+       
+        tab4_layout =[
+            [sg.Checkbox(' Zeeman ', default=False, key='-POL-')],
+            
+            [sg.Text('Position raie :'),sg.Input(default_text=poly[2],size=(5,1),key='c'),
+             sg.Text('  Ecartement en pixels :',size=(17,1)),sg.Input(default_text=2,size=(3,1),key='Zeeman_wide',enable_events=True), sg.Text('+/- pixels'),
+             sg.Text('  Décalage :'), sg.Input(default_text=0,size=(4,1),key='Zeeman_shift',enable_events=True)],
+        
+            [sg.Text('Coefficient polynome forme fente : ',size=(24,1)),sg.Input(default_text=poly[0],size=(9,1),key='a'), sg.Text('x2'),
+             sg.Input(default_text=poly[1],size=(9,1),key='b'), sg.Text('x')],
+            
+            [sg.Text('Nom fichier racine aile bleue :'), sg.Input(default_text="b-", size=(15,1), key='racine_bleu')],
+            [sg.Text('Nom fichier racine aile rouge :'), sg.Input(default_text="r-", size=(15,1), key='racine_rouge')]
+            ]
+    else:
+        tab1_layout = [      
+            #### Section 1 part ####
+            [sg.T(SYMBOL_UP, enable_events=True, k='-OPEN SEC1-', text_color='white'), sg.T('Advanced', enable_events=True, text_color='white', k='-OPEN SEC1-TEXT')],
+            [collapse(section1, '-SEC1-')],
+            [sg.Text('Shift in pixels :',size=(11,1)),sg.Input(default_text='0',size=(4,1),key='-DX-',enable_events=True)]
+            ]
+        
+        tab2_layout =[
+            [sg.Checkbox(' Compute Doppler and Continuum images ', default=False, key='-DOPCONT-')],
+            [sg.Text('Doppler shift :',size=(12,1)),sg.Input(default_text=dec_pix_dop,size=(4,1),key='-DopX-',enable_events=True)],
+            [sg.Text('Continuum shift :',size=(12,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='-ContX-',enable_events=True)]
+            ]
+        
+        tab3_layout =[
+            [sg.Checkbox(' Generate a spectraly shifted images sequence ', default=False, key='-VOL-')],
+            [sg.Text('Range in pixels :',size=(12,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='Volume',enable_events=True), sg.Text('+/- pixels')]
+            ]
+       
+        tab4_layout =[
+            [sg.Checkbox(' Zeeman ', default=False, key='-POL-')],
+            
+            [sg.Text('Line position :'),sg.Input(default_text=poly[2],size=(5,1),key='c'),
+             sg.Text(' Pixels spacing :',size=(12,1)),sg.Input(default_text=2,size=(3,1),key='Zeeman_wide',enable_events=True), sg.Text('+/- pixels'),
+             sg.Text(' Shift  :'), sg.Input(default_text=0,size=(4,1),key='Zeeman_shift',enable_events=True)],
+        
+            [sg.Text('Polynom terms of slit distorsion : ',size=(24,1)),sg.Input(default_text=poly[0],size=(9,1),key='a'), sg.Text('x2'),
+             sg.Input(default_text=poly[1],size=(9,1),key='b'), sg.Text('x')],
+            
+            [sg.Text('Bleu line wing generic file name :'), sg.Input(default_text="b-", size=(15,1), key='racine_bleu')],
+            [sg.Text('Red line wing generic file name  :'), sg.Input(default_text="r-", size=(15,1), key='racine_rouge')]
             ]
     
-    tab1_layout = [
-        [sg.Text('Nom du fichier', size=(15, 1)), sg.InputText(default_text='',size=(65,1),key='-FILE-'),
-         sg.FilesBrowse('Open',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
-        #### Section 1 part ####
-        [sg.T(SYMBOL_UP, enable_events=True, k='-OPEN SEC1-', text_color='white'), sg.T('Advanced', enable_events=True, text_color='white', k='-OPEN SEC1-TEXT')],
-        [collapse(section1, '-SEC1-')],
-        [sg.Text('Decalage pixels',size=(15,1)),sg.Input(default_text='0',size=(5,1),key='-DX-',enable_events=True)]
-        ]
-    
-    tab2_layout =[
-        [sg.Checkbox('Calcul images doppler et continuum', default=False, key='-DOPCONT-')],
-        [sg.Text('Decalage doppler',size=(15,1)),sg.Input(default_text=dec_pix_dop,size=(5,1),key='-DopX-',enable_events=True)],
-        [sg.Text('Decalage continuum',size=(15,1)),sg.Input(default_text=dec_pix_cont,size=(5,1),key='-ContX-',enable_events=True)]
-        ]
-    layout = [
-        [sg.TabGroup([[sg.Tab('General', tab1_layout), sg.Tab('Doppler & Continuum', tab2_layout,)]],tab_background_color='#404040')],  
-        [sg.Button('Ok', size=(14,1)), sg.Cancel()],
-        [sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
-        ] 
+    if LG == 1:
+        layout = [
+            [sg.Text('Fichier(s) :', size=(6, 1)), sg.InputText(default_text='',size=(66,1),key='-FILE-'),
+             sg.FilesBrowse(' Ouvrir ',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
+            
+            [sg.TabGroup([[sg.Tab('  Général  ', tab1_layout), sg.Tab(' Doppler & Continuum ', tab2_layout,), 
+                sg.Tab(' Séquence Doppler ', tab3_layout,),
+                sg.Tab(' Magnétogramme ',tab4_layout,)]],tab_background_color='#404040')],  
+            [sg.Button('Ok', size=(14,1)), sg.Cancel('  Annuler  ')],
+            [sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
+            ]
+    else:
+        layout = [
+            [sg.Text('File(s) :', size=(5, 1)), sg.InputText(default_text='',size=(70,1),key='-FILE-'),
+             sg.FilesBrowse(' Open ',file_types=(("SER Files", "*.ser"),),initial_folder=WorkDir)],
+            
+            [sg.TabGroup([[sg.Tab('  General  ', tab1_layout), sg.Tab(' Doppler & Continuum ', tab2_layout,), 
+                sg.Tab(' Doppler sequence ', tab3_layout,),
+                sg.Tab(' Magnetogram ',tab4_layout,)]],tab_background_color='#404040')],  
+            [sg.Button('Ok', size=(14,1)), sg.Cancel('  Cancel  ')],
+            [sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
+            ]
+            
     
     window = sg.Window('INTI', layout, finalize=True)
     opened1 = False
@@ -149,11 +248,21 @@ def UI_SerBrowse (WorkDir, dec_pix_dop, dec_pix_cont):
     
     while True:
         event, values = window.read()
-        if event==sg.WIN_CLOSED or event=='Cancel': 
+        if event==sg.WIN_CLOSED or event=='  Cancel  ' or event=='  Annuler  ': 
             break
         
         if event=='Ok':
-            break
+            #WorkDir=os.path.dirname(values['-FILE-'])+"/"
+            #os.chdir(WorkDir)
+            base=os.path.basename(values['-FILE-'])
+            basefich=os.path.splitext(base)[0]
+            if basefich!='':
+                break
+            else:
+                if LG==2:
+                    print('Enter file name')
+                else:
+                    print('Entrez un nom de fichier')
         
         if event.startswith('-OPEN SEC1-'):
             opened1 = not opened1
@@ -161,29 +270,46 @@ def UI_SerBrowse (WorkDir, dec_pix_dop, dec_pix_cont):
             window['-SEC1-'].update(visible=opened1)
 
     window.close()
-               
-    FileNames=values['-FILE-']
+    try:          
+        FileNames=values['-FILE-']
+    except:
+        FileNames=''
 
-    if FileNames==None :
-            FileNames=''
+    #if FileNames==None :
+            #FileNames=''
     Shift=[]
     Flags={}
-    Shift.append(int(values['-DX-']))
-    Shift.append(int(values['-DopX-']))
-    Shift.append(int(values['-ContX-']))
+    Poly=[]
+    Racines=[]
+
+
+    Poly.append(float(values['a']))
+    Poly.append(float(values['b']))
+    Poly.append(float(values['c']))
     Flags["RTDISP"]=values['-DISP-']
     Flags["DOPCONT"]=values['-DOPCONT-']
     Flags["ALLFITS"]=values['-SFIT-']
-    #flag_display=values['-DISP-']
-    #flag_dopcont=values['-DOPCONT-']
-    #flag_dopcont=True
-    #flag_display=False
+    Flags["VOL"]=values['-VOL-']
+    Flags["POL"]=values['-POL-']
     ratio_fixe=float(values['-RATIO-'])
-    #sfit_onlyfinal=values['-SFIT-']
-    #sfit_onlyfinal=False
     ang_tilt=values['-TILT-']
+    if values['-F_ANG_SXSY-']!=True:
+        ratio_fixe=0
+        ang_tilt=0
+
+    Shift.append(int(values['-DX-']))
+    Shift.append(int(values['-DopX-']))
+    Shift.append(int(values['-ContX-']))
+    if Flags["POL"]:
+        Shift.append(int(values['Zeeman_wide']))
+        Shift.append(float(values['Zeeman_shift']))
+    else:
+        Shift.append(int(values['Volume']))
+        Shift.append(0.0)
+    Racines.append(values['racine_bleu'])
+    Racines.append(values['racine_rouge'])
     
-    return FileNames, Shift, Flags, ratio_fixe,ang_tilt
+    return FileNames, Shift, Flags, ratio_fixe,ang_tilt, Poly, Racines
 
 """
 -------------------------------------------------------------------------------------------
@@ -196,8 +322,10 @@ Program starts here !
 
 #my_ini=os.path.dirname(sys.argv[0])+'/inti.yaml'
 my_ini=os.getcwd()+'/inti.yaml'
-my_dictini={'directory':'', 'dec doppler':3, 'dec cont':15}
+my_dictini={'directory':'', 'dec doppler':3, 'dec cont':15, 'poly_slit_a':0, "poly_slit_b":0,'poly_slit_c':0, 'ang_tilt':0, 'ratio_sysx':0}
 #print('myini de depart:', my_ini)
+poly=[]
+
 
 try:
     #my_ini=os.path.dirname(sys.argv[0])+'/inti.yaml'
@@ -205,23 +333,31 @@ try:
     with open(my_ini, "r") as f1:
         my_dictini = yaml.safe_load(f1)
 except:
-   print('creating inti.yaml as: ', my_ini)
+   if LG == 1:
+       print('Création de inti.yaml comme : ', my_ini)
+   else:
+       print('creating inti.yaml as: ', my_ini) 
 
 WorkDir=my_dictini['directory']
 dec_pix_dop=int(my_dictini['dec doppler'])
 dec_pix_cont=int(my_dictini['dec cont'])
+poly.append(float(my_dictini['poly_slit_a']))
+poly.append(float(my_dictini['poly_slit_b']))
+poly.append(float(my_dictini['poly_slit_c']))
+saved_tilt=float(my_dictini['ang_tilt'])
+saved_ratio=float(my_dictini['ratio_sysx'])
 
 # Recupere paramatres de la boite de dialogue
-serfiles, Shift, Flags, ratio_fixe,ang_tilt = UI_SerBrowse(WorkDir, dec_pix_dop, dec_pix_cont)
+serfiles, Shift, Flags, ratio_fixe,ang_tilt, poly, racines= UI_SerBrowse(WorkDir, saved_tilt, saved_ratio,dec_pix_dop, dec_pix_cont, poly)
 serfiles=serfiles.split(';')
+ii=1
 
-
-
-    
 # pour gerer la tempo des affichages des images resultats dans cv2.waitKey
 # si plusieurs fichiers à traiter
 if len(serfiles)==1:
     tempo=60000 #tempo 60 secondes, pour no tempo mettre tempo=0 et faire enter pour terminer
+    if  Flags["POL"]:
+        tempo=3000 # tempo raccourcie après extraction zeeman 
 else:
     tempo=1000 #temp 1 sec
     
@@ -237,48 +373,57 @@ for serfile in serfiles:
     base=os.path.basename(serfile)
     basefich=os.path.splitext(base)[0]
     if base=='':
-        logme('erreur nom de fichier : '+serfile)
+        if LG == 1:
+            logme('Erreur de nom de fichier : '+serfile)
+        else:
+            logme('File name error: '+serfile)
         sys.exit()
     
     # met a jour le repertoire et les flags dans le fichier ini, oui a chaque fichier pour avoir le bon rep
     my_dictini['directory']=WorkDir
     my_dictini['dec doppler']=Shift[1]
     my_dictini['dec cont']=Shift[2]
+    my_dictini['poly_slit_a']=poly[0]
+    my_dictini['poly_slit_b']=poly[1]
+    my_dictini['poly_slit_c']=poly[2]
+    my_dictini['ang_tilt']=ang_tilt
+    my_dictini['ratio_sysx']=ratio_fixe
     
     try:
         with open(my_ini, "w") as f1:
             yaml.dump(my_dictini, f1, sort_keys=False)
     except:
-        logme ('error saving inti.yaml as : '+my_ini)
-        
-
+        if LG == 1:
+            logme ('Erreur lors de la sauvegarde de inti.yaml comme : '+my_ini)
+        else:
+            logme ('Error saving inti.yaml as: '+my_ini)
 
     # appel au module d'extraction, reconstruction et correction
     #
     # basefich: nom du fichier ser sans extension et sans repertoire
     # dx: decalage en pixel par rapport au centre de la raie 
     
+    if Flags['POL'] and ii>1:
+        ratio_fixe=geom[0]
+        ang_tilt=geom[1]
     
-    frames, header, cercle=sol.solex_proc(serfile,Shift,Flags,ratio_fixe,ang_tilt)
-    
-    
+    frames, header, cercle, range_dec, geom=sol.solex_proc(serfile,Shift,Flags,ratio_fixe,ang_tilt, poly)
     
     #t0=time.time()
     base=os.path.basename(serfile)
     basefich='_'+os.path.splitext(base)[0]
-    
+         
     #if Shift != 0 :
         #add shift value in filename to not erase previous file
         #basefich=basefich+'_dp'+str(Shift) # ajout '_' pour avoir fichier en tete dans explorer/finder
 
-    ih=frames[0].shape[0]
-    newiw=frames[0].shape[1]
+    ih = frames[0].shape[0]
+    newiw = frames[0].shape[1]
 
     top_w=0
     left_w=0
     tw=150
     lw=34
-    
     
     # my screensize is 1536x864 - harcoded as tk.TK() produces an error in spyder
     # plus petit for speed up
@@ -294,7 +439,11 @@ for serfile in serfiles:
         sc = 1
     
     # Lecture et affiche image disque brut
-    ImgFile=basefich+'_raw.fits'
+    if range_dec[0]==0:
+        ImgFile=basefich+'_raw.fits'
+    else:
+        ImgFile=basefich+'_dp'+str(range_dec[0])+'_raw.fits'
+    
     hdulist = fits.open(ImgFile, memmap=False)
     hdu=hdulist[0]
     myspectrum=hdu.data
@@ -338,10 +487,13 @@ for serfile in serfiles:
     cl1 = clahe.apply(frames[0])
     
     # png image generation
-    # image leger seuils
+    # image seuils moyen
     frame1=np.copy(frames[0])
-    Seuil_bas=np.percentile(frame1, 25)
-    Seuil_haut=np.percentile(frame1,99.9999)
+    #Seuil_bas=np.percentile(frame1, 25)
+    #Seuil_haut=np.percentile(frame1,99.9999)
+    sub_frame=frame1[5:,:-5]
+    Seuil_haut=np.percentile(sub_frame,99.999)
+    Seuil_bas=(Seuil_haut*0.15)
     frame1[frame1>Seuil_haut]=Seuil_haut
     #print('seuil bas', Seuil_bas)
     #print('seuil haut', Seuil_haut)
@@ -413,11 +565,13 @@ for serfile in serfiles:
             frame_contrasted3=np.array(img_seuil, dtype='uint16')
             cv2.imshow('protus',frame_contrasted3)
         else:
-            print("Erreur disque occulteur")
+            if LG == 1:
+                print("Erreur disque occulteur.")
+            else:
+                print("Mask disk error.")
+                
             frame_contrasted3=frame_contrasted
         
-
-    
     Seuil_bas=np.percentile(cl1, 25)
     Seuil_haut=np.percentile(cl1,99.9999)*1.05
     cc=(cl1-Seuil_bas)*(65000/(Seuil_haut-Seuil_bas))
@@ -434,7 +588,7 @@ for serfile in serfiles:
             cv2.moveWindow('continuum', top_w, left_w)
             cv2.resizeWindow('continuum',(int(newiw*sc), int(ih*sc)))
             # seuils image continuum 
-            frameC=np.copy(frames[3])
+            frameC=np.copy(frames[len(frames)-1])
             sub_frame=frameC[5:,:-5]
             Seuil_haut=np.percentile(sub_frame,99.999)
             Seuil_bas=(Seuil_haut*0.25)
@@ -447,54 +601,149 @@ for serfile in serfiles:
             # display image
             cv2.imshow('continuum',frame_continuum)
             # sauvegarde en png de continuum
-            cv2.imwrite(basefich+'_cont.png',frame_continuum)
-        
+            cv2.imwrite(basefich+'_dp'+str(range_dec[len(range_dec)-1])+'_cont.png',frame_continuum)
         
         top_w=top_w+tw
         left_w=left_w+lw
         cv2.namedWindow('doppler', cv2.WINDOW_NORMAL)
         cv2.moveWindow('doppler', top_w, left_w)
         cv2.resizeWindow('doppler',(int(newiw*sc), int(ih*sc)))
-    
-        #on se tente une image couleur...
-        flag_erreur_doppler=False
-        try :
-            img_doppler=np.zeros([ih, frames[1].shape[1], 3],dtype='uint16')
-            moy=np.array(((frames[1]+frames[2])/2), dtype='uint16')
-            i2,Seuil_haut, Seuil_bas=seuil_image(moy)
-            i3=seuil_image_force(frames[2],Seuil_haut, Seuil_bas)
-            i1=seuil_image_force (frames[1],Seuil_haut, Seuil_bas)
-            #i1,Seuil_haut, Seuil_bas=seuil_image(frames[1])
-            #i3,Seuil_haut, Seuil_bas=seuil_image(frames[2])
-            img_doppler[:,:,0] = i1
-            img_doppler[:,:,1] = i2
-            img_doppler[:,:,2] = i3
-            cv2.imshow('doppler',img_doppler)
-       
-        except:
-            print ('erreur image doppler')
-            flag_erreur_doppler=True
-            cv2.destroyWindow('doppler')
-            pass
+        
+        if Flags["DOPCONT"]:
+   
+            #on se tente une image couleur...
+            flag_erreur_doppler=False
+            try :
+                img_doppler=np.zeros([ih, frames[1].shape[1], 3],dtype='uint16')
+                if Flags["VOL"] :
+                    moy=np.array(((frames[1]+frames[len(frames)-1])/2), dtype='uint16')
+                else:
+                    moy=np.array(((frames[1]+frames[2])/2), dtype='uint16')
+                i2,Seuil_haut, Seuil_bas=seuil_image(moy)
+                i3=seuil_image_force(frames[2],Seuil_haut, Seuil_bas)
+                i1=seuil_image_force (frames[1],Seuil_haut, Seuil_bas)
+                #i1,Seuil_haut, Seuil_bas=seuil_image(frames[1])
+                #i3,Seuil_haut, Seuil_bas=seuil_image(frames[2])
+                img_doppler[:,:,0] = i1
+                img_doppler[:,:,1] = i2
+                img_doppler[:,:,2] = i3
+                cv2.imshow('doppler',img_doppler)
+           
+            except:
+                if LG == 1:
+                    print ('Erreur image doppler.')
+                else:
+                    print ('Doppler image error.')
+                flag_erreur_doppler=True
+                cv2.destroyWindow('doppler')
+                pass
 
-        #sauvegarde en png de continuum
-        if flag_erreur_doppler==False:
-            cv2.imwrite(basefich+'_doppler.png',img_doppler)
+            #sauvegarde en png de doppler
+            if flag_erreur_doppler==False:
+                cv2.imwrite(basefich+'_doppler'+str(abs(range_dec[1]))+'.png',img_doppler)
 
     
-    #sauvegarde en png disk quasi sans seuillage
-    cv2.imwrite(basefich+'_raw.png',Disk2)
+    #sauvegarde en png disk quasi sans seuillage de image sans decalage
+    if range_dec[0]==0:
+        img_suffix=""
+    else:
+        img_suffix="_dp"+str(range_dec[0])
+        
+    cv2.imwrite(basefich+img_suffix+'_raw.png',Disk2)
     #sauvegarde en png disk quasi seuils max
-    cv2.imwrite(basefich+'_disk.png',frame_contrasted)
+    cv2.imwrite(basefich+img_suffix+'_disk.png',frame_contrasted)
     #sauvegarde en png seuils serrés
-    cv2.imwrite(basefich+'_diskHC.png',frame_contrasted2)
+    cv2.imwrite(basefich+img_suffix+'_diskHC.png',frame_contrasted2)
     #sauvegarde en png seuils protus
-    cv2.imwrite(basefich+'_protus.png',frame_contrasted3)
+    cv2.imwrite(basefich+img_suffix+'_protus.png',frame_contrasted3)
     #sauvegarde en png de clahe
-    cv2.imwrite(basefich+'_clahe.png',cc)
+    cv2.imwrite(basefich+img_suffix+'_clahe.png',cc)
+        
     
-    
+    # sauve les png multispectraux et cree une video
+   
+    if Flags["VOL"] or Flags["POL"] :
+        
+        k=1
+        
+        #ROi de 200 pixels autour du centre du disque
 
+        dim_roi=200
+        rox1= cercle[0]-dim_roi
+        rox2=cercle[0]+dim_roi
+        roy1=cercle[1]-dim_roi
+        roy2=cercle[1]+dim_roi
+        
+        # calcul moyenne intensité au centre du disque
+        frame0=np.copy(frames[0])
+        lum_roi=np.mean(frame0[roy1:roy2,rox1:rox2])
+        lum_roi_ref=30000
+        sub_frame=frame0[5:,:-5]*(lum_roi_ref/lum_roi)
+        Seuil_haut=np.percentile(sub_frame,99.999)
+        Seuil_bas=(Seuil_haut*0.15)
+        
+        # fenetre doppler ajutée
+        #cv2.namedWindow('video', cv2.WINDOW_NORMAL)
+        #cv2.moveWindow('video', 0, 0)
+        #h, w=(int(frame0.shape[0]*0.2),int(frame0.shape[1]*0.2))
+        #cv2.resizeWindow('video',(w, h))
+   
+        
+        for i in range(1, len(range_dec)) :
+            # image seuils moyen 
+            framedec=np.copy(frames[i])
+            sub_frame=framedec[5:,:-5]
+            
+            # calcul moyenne intensité au centre du disque
+            lum_roi=np.mean(framedec[roy1:roy2,rox1:rox2])
+            lum_coef=lum_roi_ref/lum_roi
+            framedec=framedec*lum_coef
+
+            framedec[framedec>Seuil_haut]=Seuil_haut
+            fdec=(framedec-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
+            fdec[fdec<0]=0
+            frame_dec=np.array(fdec, dtype='uint16')
+            cv2.waitKey(300)
+            cv2.imshow('doppler',frame_dec)
+            
+            if range_dec[i]+range_dec[i-1]==0 :
+                frame0=np.copy(frames[0])
+                sub_frame=frame0[5:,:-5]
+                
+                # calcul moyenne intensité au centre du disque
+                lum_roi=np.mean(frame0[roy1:roy2,rox1:rox2])
+                lum_coef=lum_roi_ref/lum_roi
+                frame0=frame0*lum_coef
+                
+                frame0[frame0>Seuil_haut]=Seuil_haut
+                f0=(frame0-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
+                f0[f0<0]=0             
+                frame_0=np.array(f0, dtype='uint16')
+                cv2.waitKey(500)
+                cv2.imshow('doppler',frame_0)
+                cv2.imwrite(basefich+'_dp'+str(k)+'.png',frame_0)
+                k=k+1
+            
+            cv2.imwrite(basefich+'_dp'+str(k)+'.png',frame_dec)
+            k=k+1
+            
+        if  Flags["POL"]==False:
+            #genere un fichier video
+            filename=basefich+'.mp4'
+            h, w=frames[0].shape
+            height, width=(int(h*0.4),int(w*0.4))
+            img=[]
+            fourcc = cv2.VideoWriter_fourcc(*'h264')
+            out = cv2.VideoWriter(filename, fourcc, 1.5, (width, height),0)
+            for i in range(1,len(range_dec)+1) :
+                filename=basefich+'_dp'+str(i)+'.png'
+                img=cv2.imread(filename)
+                img2=cv2.resize(img,(width, height),interpolation = cv2.INTER_AREA)
+                out.write(img2)
+    
+            out and out.release()
+            #cv2.destroyAllWindows() 
+                
     
     """
     #create colormap
@@ -520,16 +769,34 @@ for serfile in serfiles:
     #t1=time.time()
     #print('affichage : ', t1-t0)
 
-    cv2.waitKey(tempo)
+  
     #sauvegarde le fits
     frame2=np.copy(frames[0])
     frame2=np.array(cl1, dtype='uint16')
     DiskHDU=fits.PrimaryHDU(frame2,header)
     DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
+    
+    if Flags['POL']:
+        # renomme les dp fits en r et b
+        ImgFileb=basefich+'_dp'+str(range_dec[1])+'_recon.fits'
+        ImgFiler=basefich+'_dp'+str(range_dec[2])+'_recon.fits'
+        os.replace(ImgFileb,racines[0]+str(ii)+".fits")
+        os.replace(ImgFiler,racines[1]+str(ii)+".fits")
+        print('Sorties :')
+        print(racines[0]+str(ii)+".fits")
+        print(racines[1]+str(ii)+".fits")
+        # renomme les dp png en r et b
+        ImgFileb=basefich+'_dp2.png'
+        ImgFiler=basefich+'_dp3.png'
+        os.replace(ImgFileb,racines[0]+str(ii)+".png")
+        os.replace(ImgFiler,racines[1]+str(ii)+".png")
 
+
+    # V3.2 -> tempo après sauvegarde des fichiers
+    cv2.waitKey(tempo)
+    
     cv2.destroyAllWindows()
-    
-    
+      
     """
     not really useful, too small, better to use png or fits
     and strange message on spyder when UI display "can't invoke "event" command"
@@ -555,5 +822,6 @@ for serfile in serfiles:
     cv2.destroyAllWindows()
     """
     print (serfile)
+    ii=ii+1 # boucle sur non de fichier pour generer sequence en polarimetrie
     print()
 

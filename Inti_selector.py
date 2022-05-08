@@ -91,7 +91,7 @@ Permet la comparaison d'images png pour selectioner la meilleure
 
 #my_ini=os.path.dirname(sys.argv[0])+'/inti.yaml'
 my_ini=os.getcwd()+'/inti.yaml'
-my_dictini={'directory':'', 'dec_doppler':3, 'dec_cont':15}
+my_dictini={'directory':'', 'dec doppler':3, 'dec cont':15, 'poly_slit_a':0, "poly_slit_b":0,'poly_slit_c':0, 'ang_tilt':0, 'ratio_sysx':0}
 #print('myini de depart:', my_ini)
 
 try:
@@ -123,6 +123,8 @@ colonne1= [
     ]
 
 colonne_mid=[
+    [sg.InputText(visible=False, key='-OPENLIST-',enable_events=True),
+     sg.FilesBrowse('Open list',target='-OPENLIST-',initial_folder=WorkDir,file_types=(("time txt", "t*_log.txt"),("all", "*.txt")))],
     [sg.Listbox(values='', select_mode='extended',size=(20,10), enable_events=True, key='-LIST-')],
     [sg.Text('',size=(15,3))],
     [sg.Text('',size=(15,3))],
@@ -132,6 +134,7 @@ colonne_mid=[
     [sg.Text('',size=(15,3))],
     [sg.Button ("Reset", size=(10,1))]
     ]
+
 layout = [
     [sg.Text('Directory', size=(15, 1)), sg.InputText(default_text='',size=(100,1),enable_events=True,key='-FOLDER-'),
      sg.FolderBrowse('Open',initial_folder=WorkDir), 
@@ -219,7 +222,6 @@ Boucle events de la window
 """
 while True:
     event, values = window.read()
-    
 
     
     if event=='-PAT-':
@@ -231,7 +233,7 @@ while True:
         indice_ref=0
         dim=dim0
         pattern=values['-PAT-']
-        mylog.append(pattern)
+        mylog.append(pattern+'\n')
         graph0.erase()
         graph1.erase()
         sel_list=[]
@@ -339,6 +341,26 @@ while True:
             window.Element('-LIST-').update(values=clahe_files)
         else:
             print('no files found')
+            
+    if event=='-OPENLIST-':
+        file_list=values['-OPENLIST-']
+        if file_list !='':
+            #print('fichier image selectionnées : '+file_list)
+            with open(file_list) as f:
+                read_lines=f.readlines()
+                n=[a.split(" ")[0] for a in read_lines]
+                b=[a for a in n if a[0]=="_" ]
+                clahe_files=b
+                if len(clahe_files)!=0 :
+                    bio=img_resize(clahe_files[0],dim)
+                    combo = get_gainexp(clahe_files[0])
+                    window['-NOM0-'].update(combo)
+                    window['-NOM1-'].update(combo)
+                    graph0.DrawImage(data=bio, location=(x0,y0))
+                    graph1.DrawImage(data=bio, location=(x0,y0))
+                    nb_img=len(clahe_files)
+                    window.Element('-LIST-').update(values=clahe_files)
+        
         
     if event=="Log":
         combo = get_gainexp(clahe_files[i])
@@ -353,7 +375,7 @@ while True:
         indice_ref=0
         nb_img=len(clahe_files)
         sel_list=[]
-        mylog.append("selection")
+        
         graph0.erase()
         graph1.erase()
         bio=img_resize(clahe_files[0],dim)
@@ -362,6 +384,10 @@ while True:
         window['-NOM1-'].update(combo)
         graph0.DrawImage(data=bio, location=(x0,y0))
         graph1.DrawImage(data=bio, location=(x0,y0))
+        # on sauve les noms de fichiers loggés
+        with  open("t"+str(int(time.time()))+'_log.txt', "w") as logfile:
+                logfile.writelines(mylog)
+        mylog=[]
         
     if event=="-LIST-" and len(values['-LIST-'])!=0 :
 
@@ -431,7 +457,8 @@ Sortie de l'application
 """
 #print (my_ini)
 # on sauve les noms de fichiers loggés
-with  open(str(int(time.time()))+'_log.txt', "w") as logfile:
+if mylog[-1][0]!="*" :
+    with  open("t"+str(int(time.time()))+'_log.txt', "w") as logfile:
         logfile.writelines(mylog)
 
 #met a jour le repertoire si on a changé dans le fichier ini.yaml

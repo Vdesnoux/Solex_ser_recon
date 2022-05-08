@@ -6,6 +6,23 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+Version du 28 avril 2022 - paris
+- mise en commentaire malheureuse de la zone de filtrage disque qui n'excluait plus les bords
+
+version du 23 avril 2022 - Paris
+- factorisation des tableaux indices left et rigth
+- ajout de calcul d'une sequence doppler
+- ajout de la fonction magnetogramme
+- creation d'une version anglaise par swith LG a la compil
+- ajout mot clef fits 
+     coord centre et rayon du disque
+         hdr['INTI_XC'] = cercle0[0]
+         hdr['INTI_YC'] = cercle0[1]
+         hdr['INTI_R'] = cercle0[2]
+     coord haut et bas du disque
+         hdr['INTI_Y1'] = y1_img
+         hdr['INTI_Y2'] = y2_img
+- gestion shift hors limite
 
 Version du 1er Nov - Paris
 - modif detection bords dans correction de transversallium
@@ -17,8 +34,6 @@ Bac à sable le 15 sept 2021 - Paris
 - test de dopplergram et continuum
 - ne pas mettre y1 et y2 fixe pour circularisation des images dop et cont
 - coord cercle de l'image raw première
-
-TODO: factorisation des tableaux indices left et rigth eventuellement
 
 
 version 18 septembre 2021 - antibes
@@ -110,9 +125,12 @@ from datetime import datetime
 from Inti_functions import *
 from serfilesreader.serfilesreader import Serfile
 
-    
+# -------------------------------------------------------------
+global LG # Langue de l'interfacer (1 = FR ou 2 = US)
+LG = 2
+# -------------------------------------------------------------
 
-def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
+def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly):
     """
     ----------------------------------------------------------------------------
     Reconstuit l'image du disque a partir de l'image moyenne des trames et 
@@ -135,18 +153,42 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
     shift_dop = Shift[1]
     shift_cont =Shift[2]
 
+    shift_vol=Shift[3]
+    shift_zeeman=Shift[4]
+  
     flag_dopcont=Flags["DOPCONT"]
     flag_display=Flags["RTDISP"]
     sfit_onlyfinal=Flags["ALLFITS"]
+    flag_pol=Flags['POL']
+    flag_volume=Flags["VOL"]
     
-    img_suff=(['.fits','_d1_'+str(shift_dop)+'.fits', '_d2_'+str(shift_dop)+'.fits','_cont_'+str(shift_cont)+'.fits'])
+    geom=[]
+
+    # gere ici le nombre de longueur d'onde aka decalages à gérer
+    # decalage nul pour l'image de la raie spectrale
+    # decalage de shift_dop pour le doppler, decalage de shift_cont pour celui du continuum sur flag_dopcont
+    # serie de décalage de 1 pixel entre les bornes +/- shift_vol sur flag_volume
+    
+    #img_suff=(['.fits','_d1_'+str(shift_dop)+'.fits', '_d2_'+str(shift_dop)+'.fits','_cont_'+str(shift_cont)+'.fits'])
     
     if flag_dopcont :
-        kend=4 #avec doppler et conti 
+        range_dec=[0,-shift_dop,shift_dop,shift_cont]
     else:
-        kend=1 #pas de doppler ni continuum
+        if shift==0:
+            range_dec=[0]
+        else:
+            range_dec=[shift]
     
+    if flag_volume :
+        range_dec1=np.arange(-shift_vol,0)
+        range_dec2=np.arange(1,shift_vol+1)
+        range_dec=np.concatenate(([0],range_dec1,range_dec2), axis=0)
     
+    if flag_pol :
+        range_dec=[0,-shift_vol,shift_vol]
+    
+    kend=len(range_dec)
+        
     #print ('nombre de traitements ',kend)
     WorkDir=os.path.dirname(serfile)+"/"
     os.chdir(WorkDir)
@@ -162,7 +204,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
     try:
         scan = Serfile(serfile, False)
     except:
-        logme('erreur ouverture fichier : ',serfile)
+        logme('Erreur ouverture fichier : '+serfile)
         
     FrameCount = scan.getLength()    #      return number of frame in SER file.
     Width = scan.getWidth()          #      return width of a frame
@@ -171,15 +213,24 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
     dateSer=scan.getHeader()['DateTime']
     bitdepth=scan.getHeader()['PixelDepthPerPlane']
     if bitdepth==8:
-        logme('acquisition not done at 16 bits')
+        if LG == 1:
+            logme('Acquisition non réalisée en 16 bits.')
+        else:
+            logme('Acquisition not done at 16 bits.') 
         sys.exit()
     logme (serfile)
-    logme ('ser frame width, height : ' + str(Width)+','+str(Height))
-    logme ('ser number of frame : '+str( FrameCount))
+    
+    if LG == 1:
+        logme ('Largeur et hauteur des trames SER : ' + str(Width)+','+str(Height))
+        logme ('Nombre de trames : '+str( FrameCount))
+    else:
+        logme ('Wide and Heiht of SER frames : ' + str(Width)+','+str(Height))
+        logme ('Frames number : '+str( FrameCount))
+ 
     try:
         #logme ('ser date : '+str(dateSer))
         f_dateSerUTC=datetime.fromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
-        logme('ser date UTC :' + f_dateSerUTC.strftime('"%Y-%m-%dT%H:%M:%S.%f7%z"'))
+        logme('SER date UTC :' + f_dateSerUTC.strftime('"%Y-%m-%dT%H:%M:%S.%f7%z"'))
     except:
         pass
     
@@ -214,7 +265,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
     
     """
     ---------------------------------------------------------------------------
-    calcul image moyenne de toutes les trames
+    Calcul image moyenne de toutes les trames
     ---------------------------------------------------------------------------
     """
     
@@ -243,8 +294,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
     iw= hdr['NAXIS1']                     # Largeur de l'image
     myimg=np.reshape(myimg, (ih, iw))   # Forme tableau X,Y de l'image moyenne
 
-    
-    if sfit_onlyfinal==False:
+    if sfit_onlyfinal==False or flag_pol :
         # sauve en fits l'image moyenne avec suffixe _mean
         savefich=basefich+'_mean'              
         SaveHdu=fits.PrimaryHDU(myimg,header=hdr)
@@ -290,13 +340,16 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
   
     """
     ----------------------------------------------------------------------------
-    Calcul polynome ecart sur une image au centre de la sequence
+    Calcul polynome ecart sur l'image moyenne
     ----------------------------------------------------------------------------
     """
     # detect up and down limit of the spectrum of the mean image
     y1,y2=detect_bord(myimg, axis=1, offset=5)
     
-    logme('Limites verticales y1,y2 : '+str(y1)+' '+str(y2))
+    if LG == 1:
+        logme('Image moyenne - Limites verticales y1,y2 : '+str(y1)+' '+str(y2))
+    else:
+        logme('Mean Image - Vertical limits y1,y2 : '+str(y1)+' '+str(y2))
     
     PosRaieHaut=y1
     PosRaieBas=y2
@@ -312,9 +365,27 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
     #p=np.polyfit(ym,xm,2)
     
     #calcul des x colonnes pour les y lignes du polynome
+    
     a=p[0]
     b=p[1]
     c=p[2]
+    #poly=[a,b,c]
+    
+    if flag_pol :
+        a=poly[0]
+        b=poly[1]
+        px=poly[2]
+        
+        # Extraction zeeman
+        # Calcul position X precise de la raie d'absortion d'où on extrait la polarisation
+        # On extrait la ligne centrale dans myimg (au centre Y de l'image)
+        posy = int(ih/2)
+        line = myimg[posy:posy+1, 0: iw]
+        # On calcul la position précise de la raie
+        posx = get_line_pos_absoption(line[0], px, 13)
+        # On calcule la constante actualisée du polynôme
+        c = posx - a*posy**2 - b*posy + shift_zeeman
+              
     fit=[]
     #ecart=[]
     for y in range(0,ih):
@@ -328,36 +399,47 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
             fit.append([iw-3,0,y])
         #ecart.append([x-LineRecal,y])
     
-    logme('Coef A2,A1,A0 :'+str(a)+' '+str(b)+' '+str(c))
+    logme('Coef a*x2,b*x,c :'+str(a)+' '+str(b)+' '+str(c))
     
     np_fit=np.asarray(fit)
     xi, xdec,y = np_fit.T
     xdec=xi+xdec+LineRecal
     xi=xi+LineRecal
     
-    posX_min_slit=int(min(xi))
+    #posX_min_slit=int(min(xi)) modif du 2 avril 2022
+    posX_min_slit=int(min(xi[PosRaieHaut], xi[PosRaieBas]))
     posX_max_slit=int(max(xi[PosRaieHaut], xi[PosRaieBas]))
-    if ((posX_min_slit+shift)<=1) or ((posX_max_slit+shift)>=iw):
-        logme ('valeur decalage trop importante, calcul sans decalage')
-        shift=0
-        
-    if flag_dopcont:
-        if (posX_min_slit+shift_dop)<=1 or ((posX_max_slit+shift_dop)>=iw):
-            logme ('valeur decalage doppler trop importante')
-            kend=1
-        else:
-            if (posX_min_slit+shift_cont)<=1 or ((posX_max_slit+shift_cont)>=iw):
-                logme ('valeur decalage continuum trop importante')
-                kend=3
-           
+
     
-    #imgplot1 = plt.imshow(myimg)
-    #plt.scatter(xm,ym,s=0.1, marker='.', edgecolors=('blue'))
-    #plt.scatter(xi,y,s=0.1, marker='.', edgecolors=('red'))
-    #plt.scatter(xdec,y,s=0.1, marker='.', edgecolors=('green'))
-    
-    #plt.show()
-    
+    # Test position de la fente décalée
+    if len(range_dec)!=1 :   # si il y des decalages à prendre en compte
+        shift_max=range_dec[len(range_dec)-1]
+        shift_min=range_dec[1]
+
+        if ((posX_min_slit-shift_max)<=1) or ((posX_max_slit+shift_max)>=iw):
+            if LG == 1:
+                logme ('Valeur de décalage trop importante, calcul sans décalage.')
+            else:
+                logme ('Shift value too large, no shift computing.')
+            range_dec=[0]
+            kend=len(range_dec)
+            
+    else:
+        shift_max=range_dec[0]
+        if ((posX_min_slit-shift_max)<=1) or ((posX_max_slit+shift_max)>=iw):
+            if LG == 1:
+                logme ('Valeur de décalage trop importante, calcul sans décalage.')
+            else:
+                logme ('Shift value too large, no shift computing.')
+            range_dec=[0]
+            kend=len(range_dec)
+            
+      
+    """
+    imgplot1 = plt.imshow(myimg)
+    plt.scatter(xdec,y,s=0.1, marker='.', edgecolors=('red'))
+    plt.show()
+    """
     
     """
     ----------------------------------------------------------------------------
@@ -367,11 +449,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
     ----------------------------------------------------------------------------
     """
      
-    
-    
     FrameIndex=1             # Index de trame
 
-    
     if Width>Height:
         flag_rotate=True
         ih=Width
@@ -385,13 +464,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
     
     Disk=[]
     
-    for k in range(0,4):
+    for k in range_dec:
         Disk.append(np.zeros((ih,FrameMax), dtype='uint16'))
-
-    
-    index_left=[]
-    index_right=[]
-
     
     if flag_display:
                    
@@ -407,54 +481,23 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
         cv2.resizeWindow('image', int(iw*sc), int(ih*sc))
 
         
-    # init vector to speed up from Andrew & Doug Smiths
+    # init vector to speed up from Andrew & Doug Smiths BUIL2 calcul poids interpol
     left_weights = np.ones(ih) - np.asarray(fit)[:, 1]
     right_weights = np.ones(ih) - left_weights
     
-    ind_l=(np.asarray(fit)[:, 0] + np.ones(ih) * (LineRecal + shift)).astype(int)
-    ind_l[(ind_l)>iw-1]=iw-1
-    ind_l[(ind_l)<=0]=0
-    ind_r=(ind_l + np.ones(ih)).astype(int)
-    ind_r[(ind_r)>iw-1]=iw-1
-    ind_r[(ind_r)<=0]=0
+    ind_l=[]
+    ind_r=[]
     
-    """
-    For i in range(0,3):
-        ind_l.append(np.asarray(fit)[:, 0] + np.ones(ih) * (LineRecal + shift)).astype(int)
-        #ind_l[i][(ind_l[i])>iw-1]=iw-1
-        #ind_l[(ind_l)<=0]=0
-        ind_r.append(ind_l + np.ones(ih)).astype(int)
-        #ind_r[(ind_r)>iw-1]=iw-1
-        #ind_r[(ind_r)<=0]=0
-    """
+    for s in range_dec:
+        ind_l.append((np.asarray(fit)[:, 0] + np.ones(ih) * (LineRecal + s)).astype(int))
+        ind_l[len(ind_l)-1][(ind_l[len(ind_l)-1])>iw-1]=iw-1
+        ind_l[len(ind_l)-1][(ind_l[len(ind_l)-1])<=0]=0
+        ind_r.append((ind_l[len(ind_l)-1] + np.ones(ih)).astype(int))
+        ind_r[len(ind_l)-1][(ind_r[len(ind_l)-1])>iw-1]=iw-1
+        ind_r[len(ind_l)-1][(ind_r[len(ind_l)-1])<=0]=0
     
-    # init vector doppler 1
-    ind_l_d1 = (np.asarray(fit)[:, 0] + np.ones(ih) * (LineRecal - shift_dop)).astype(int)
-    ind_l_d1[(ind_l_d1)>iw-1]=iw-1
-    ind_l_d1[(ind_l_d1)<=0]=0
-    ind_r_d1 = (ind_l_d1 + np.ones(ih)).astype(int)
-    ind_r_d1[(ind_r_d1)>iw-1]=iw-1
-    ind_r_d1[(ind_r_d1)<=0]=0
-
     
-    # init vector doppler 2
-    ind_l_d2 = (np.asarray(fit)[:, 0] + np.ones(ih) * (LineRecal + shift_dop)).astype(int)
-    ind_l_d2[(ind_l_d2)>iw-1]=iw-1
-    ind_l_d2[(ind_l_d2)<=0]=0
-    ind_r_d2 = (ind_l_d2 + np.ones(ih)).astype(int)
-    ind_r_d2[(ind_r_d2)>iw-1]=iw-1
-    ind_r_d2[(ind_r_d2)<=0]=0
-
-    
-    # init vector continuum
-    ind_l_c = (np.asarray(fit)[:, 0] + np.ones(ih) * (LineRecal + shift_cont)).astype(int)
-    ind_l_c[(ind_l_c)>iw-1]=iw-1
-    ind_l_c[(ind_l_c)<=0]=0
-    ind_r_c = (ind_l_c + np.ones(ih)).astype(int)
-    ind_r_c[(ind_r_c)>iw-1]=iw-1
-    ind_r_c[(ind_r_c)<=0]=0
-    
-    # lance la reconstruction du disk a partir des trames
+    # Lance la reconstruction du disk a partir des trames
     while FrameIndex < FrameCount :
         #t0=float(time.time())
         img=scan.readFrameAtPos(FrameIndex)
@@ -470,48 +513,22 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
                 cv2.destroyAllWindows()
                 sys.exit()
                 
+        # Boucle sur les decalages
+        i=0
+        for i in range(0,len(range_dec)): 
+            # vector slit
+            left_col = img[np.arange(ih), ind_l[i]]
+            right_col = img[np.arange(ih), ind_r[i]]
+            # prevent saturation overflow for very high bright spots
+            left_col[left_col>64500]=64500
+            right_col[right_col>64500]=64500
         
-        # vector slit
-        left_col = img[np.arange(ih), ind_l]
-        right_col = img[np.arange(ih), ind_r]
-        # prevent saturation overflow for very high bright spots
-        left_col[left_col>64500]=64500
-        right_col[right_col>64500]=64500
-        
-        #vector shift d1
-        left_col_d1 = img[np.arange(ih), ind_l_d1]
-        right_col_d1 = img[np.arange(ih), ind_r_d1]
-        # prevent saturation overflow for very high bright spots
-        left_col_d1[left_col_d1>64500]=64500
-        right_col_d1[right_col_d1>64500]=64500
-
-        #vector shift d2
-        left_col_d2 = img[np.arange(ih), ind_l_d2]
-        right_col_d2 = img[np.arange(ih), ind_r_d2]
-        # prevent saturation overflow for very high bright spots
-        left_col_d2[left_col_d2>64500]=64500
-        right_col_d2[right_col_d2>64500]=64500
-        
-        #vector shift continuum
-        left_col_c = img[np.arange(ih), ind_l_c]
-        right_col_c = img[np.arange(ih), ind_r_c]
-        # prevent saturation overflow for very high bright spots
-        left_col_c[left_col_c>64500]=64500
-        right_col_c[right_col_c>64500]=64500
-        
-
-        IntensiteRaie = left_col*left_weights + right_col*right_weights
-        IntensiteRaie_d1 = left_col_d1*left_weights + right_col_d1*right_weights
-        IntensiteRaie_d2 = left_col_d2*left_weights + right_col_d2*right_weights
-        IntensiteRaie_c = left_col_c*left_weights + right_col_c*right_weights
-        
-        #ajoute au tableau disk 
-        Disk[0][:,FrameIndex]=IntensiteRaie
-        Disk[1][:,FrameIndex]=IntensiteRaie_d1
-        Disk[2][:,FrameIndex]=IntensiteRaie_d2
-        Disk[3][:,FrameIndex]=IntensiteRaie_c
-        
-        # display reconstruction of the disk refreshed every 30 lines
+            IntensiteRaie = left_col*left_weights + right_col*right_weights
+            
+            # Ajoute au tableau disk 
+            Disk[i][:,FrameIndex]=IntensiteRaie
+            
+        # Display reconstruction of the disk refreshed every 30 lines
         refresh_lines=int(20)
         if flag_display and FrameIndex %refresh_lines ==0:
             disk_display=[]
@@ -522,16 +539,19 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
                      sys.exit()
     
         FrameIndex=FrameIndex+1
-
    
-    #sauve fichier disque reconstruit pour affichage image raw en check final
+    # Sauve fichier disque reconstruit pour affichage image raw en check final
     hdr['NAXIS1']=FrameCount-1
+    img_suff=[]
     for i in range(0,kend):
         DiskHDU=fits.PrimaryHDU(Disk[i],header=hdr)
-        DiskHDU.writeto(basefich+'_raw'+img_suff[i],overwrite='True')
+        if i>0 : 
+            img_suff.append("_dp"+str(range_dec[i]))
+        else:
+            img_suff.append('')
+            
+        DiskHDU.writeto(basefich+img_suff[i]+'_raw.fits',overwrite='True')
 
-    
-    
     if flag_display:
         cv2.destroyAllWindows()
         
@@ -540,15 +560,29 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
     #t0=time.time()
     
     frames=[]
-    msg=('...image centre...', '...image Doppler 1...', '...image Doppler 2...', '...image continuum...')
+    msg=[]
+    if LG == 1:
+        msg.append('...image centre...')
+    else:
+        msg.append('...center image...')
+
+    if kend!=0 :
+        for i in range(1,kend) :
+            if LG == 1:
+                msg.append('...décalage image '+str(range_dec[i])+"...")
+            else:
+                msg.append('...image shift '+str(range_dec[i])+"...")
+
+    #msg=('...image centre...', '...image Doppler 1...', '...image Doppler 2...', '...image continuum...')
     
     for k in range(0,kend):
+        
         logme(' ')
         logme(msg[k])
         """
         --------------------------------------------------------------------
         --------------------------------------------------------------------
-        on passe au calcul des mauvaises lignes et de la correction geometrique
+        On passe au calcul des mauvaises lignes et de la correction geometrique
         --------------------------------------------------------------------
         --------------------------------------------------------------------
         """
@@ -562,24 +596,26 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
         
         # somme de lignes projetées sur axe Y
         ysum=np.mean(img,1)
-        #plt.plot(ysum)
-        #plt.show()
+        
+        
         # ne considere que les lignes du disque avec marge de 15 lignes 
-        ysum=ysum[y1+15:y2-15]
+        marge=15
+        ysum=ysum[y1+marge:y2-marge]
         
         # filtrage sur fenetre de 31 pixels, polynome ordre 3 (etait 101 avant)
         yc=savgol_filter(ysum,31, 3)
+        #plt.plot(yc)
+        #plt.show()
     
         # divise le profil somme par le profil filtré pour avoir les hautes frequences
         hcol=np.divide(ysum,yc)
-    
+
         # met à zero les pixels dont l'intensité est inferieur à 1.03 (3%)
         hcol[abs(hcol-1)<=0.03]=0
-    
-        
+      
         # tableau de zero en debut et en fin pour completer le tableau du disque
-        a=[0]*(y1+15)
-        b=[0]*(ih-y2+15)
+        a=[0]*(y1+marge)
+        b=[0]*(ih-y2+marge)
         hcol=np.concatenate((a,hcol,b))
         #plt.plot(hcol)
         #plt.show()
@@ -609,6 +645,11 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
         # on cherche la projection de la taille max du soleil en Y
         y1,y2=detect_bord(frame, axis=1,offset=0) 
         #x1,x2=detect_bord(frame, axis=0,offset=0)
+        if LG == 1:
+            logme('Limites verticales y1,y2 : '+str(y1)+' '+str(y2))
+        else:
+            logme('Vertical limits y1,y2 : '+str(y1)+' '+str(y2))
+        
     
         flag_nobords=detect_noXlimbs(frame)
         
@@ -652,25 +693,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
         ToSpline= ydisk[y1:y2]
         
         Smoothed2=savgol_filter(ToSpline,301, 3) # window size, polynomial order
-        
-        """
-        #best fit d'un polynome degre 4 - test pour ISIS modif
-        np_m=np.asarray(ToSpline)
-        ym=np_m.T
-        xm=np.arange(y2-y1)
-        p=np.polyfit(xm,ym,4)
-        
-        #calcul des x colonnes pour les y lignes du polynome
-        a=p[0]
-        b=p[1]
-        c=p[2]
-        d=p[3]
-        e=p[4]
-        Smoothed=[]
-        for x in range(0,y2-y1):
-            y=a*x**4+b*x**3+c*x**2+d*x+e
-            Smoothed.append(y)
-        """
+
         if debug:
             plt.plot(ToSpline)
             #plt.plot(Smoothed)
@@ -678,10 +701,10 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
             plt.show()
  
         
-        # divise le profil reel par son filtre ce qui nous donne le flat
+        # Divise le profil reel par son filtre ce qui nous donne le flat
         hf=np.divide(ToSpline,Smoothed2)
            
-        # elimine possible artefact de bord
+        # Elimine possible artefact de bord
         hf=hf[5:-5]
         
         #reconstruit le tableau du profil complet an completant le debut et fin
@@ -700,9 +723,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
             
             plt.plot(hf)
             plt.show()
-
-        
-        # genere tableau image de flat 
+ 
+        # Geénère tableau image de flat 
         flat=[]
         for i in range(0,iw):
             flat.append(hf)
@@ -710,15 +732,14 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
         np_flat=np.asarray(flat)
         flat = np_flat.T
         
-        #evite les divisions par zeros...
+        # Evite les divisions par zeros...
         flat[flat==0]=1
         
         if debug:
             plt.imshow(flat)
             plt.show()
 
-        
-        # divise image par le flat
+        # Divise image par le flat
         BelleImage=np.divide(frame,flat)
         frame=np.array(BelleImage, dtype='uint16')
         
@@ -731,7 +752,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
             # sauvegarde de l'image deflattée
             #DiskHDU=fits.PrimaryHDU(frame,header=hdu.header)
             DiskHDU=fits.PrimaryHDU(frame,header=hdr)
-            DiskHDU.writeto(basefich+'_flat'+img_suff[k],overwrite='True')
+            DiskHDU.writeto(basefich+img_suff[k]+'_flat.fits',overwrite='True')
        
         #t1=time.time()
         #print('fin flat :', t1-t0)
@@ -739,7 +760,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
        
         """
         ------------------------------------------------------------
-        calcul du tilt si on voit les bords du soleil
+        Calcul du tilt si on voit les bords du soleil
         sinon on n'applique pas de correction de tilt,
         on applique un facteur SY/SX=0.5
         et on renvoit a ISIS
@@ -750,15 +771,13 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
         EllipseFit=[]
         crop=0
     
-    
         #if float(ang_tilt)==0:
                   
         # methode fit ellipse pour calcul de tilt
         # zone d'exclusion des points contours zexcl en pourcentage de la hauteur image 
         X = detect_edge (img2, zexcl=0.1, crop=crop, disp_log=False)
         EllipseFit,XE=fit_ellipse(img2, X,disp_log=False)
- 
-        
+  
         if not(flag_nobords):
             
             # correction de tilt uniquement si on voit les limbes droit/gauche
@@ -791,16 +810,16 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
                 AlphaDeg=float(ang_tilt)
                 AlphaRad=math.radians(AlphaDeg)
                 TanAlpha=np.arctan(AlphaRad)
-                
-            logme('Angle Tilt : '+"{:+.3f}".format(AlphaDeg))
+            
+            if LG == 1:
+                logme('Angle de Tilt : '+"{:+.3f}".format(AlphaDeg))
+            else:
+                logme('Tilt angle : '+"{:+.3f}".format(AlphaDeg))
             
             #on force l'angle de tilt pour les prochaines images
             ang_tilt=AlphaDeg
             
-                
-    
-            
-            # test si correction de tilt si angle supérieur a 0.3 degres
+            # Test si correction de tilt si angle supérieur a 0.3 degres
             if abs(AlphaDeg)> 0.3 :
                 
                 #decale lignes images par rapport au centre
@@ -812,9 +831,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
                 ih=ih+dymax*2
                 
                 crop=int(abs(TanAlpha)*iw)
-               #print ('crop : ', crop)
+                #print ('crop : ', crop)
                 
-                    
                 NewImg=np.empty((ih,iw))
                 for i in range(0,iw):
                     x=img2[:,i]
@@ -830,19 +848,20 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
                 img2=np.copy(NewImg)
 
             else:
-                logme('alignment better than 0.3°, no tilt correction needed')
-        
+                if LG == 1:
+                    logme('Alignement meilleur que 0.3°, correction de tilt non nécessaire.')
+                else:
+                    logme('Alignment better than 0.3°, tilt correction not necessary.')
+                    
         if sfit_onlyfinal==False:
             # sauvegarde en fits de l'image tilt
             img2=np.array(img2, dtype='uint16')
             DiskHDU=fits.PrimaryHDU(img2,header=hdr)
-            DiskHDU.writeto(basefich+'_tilt'+img_suff[k], overwrite='True')
-        
-        
+            DiskHDU.writeto(basefich+img_suff[k]+'_tilt.fits', overwrite='True')
         
         """
         ----------------------------------------------------------------
-        calcul du parametre de scaling SY/SX
+        Calcul du parametre de scaling SY/SX
         ----------------------------------------------------------------
         """
         
@@ -867,12 +886,18 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
             EllipseFit,XE=fit_ellipse(img2, X,disp_log=False)
             
             ratio=EllipseFit[2]/EllipseFit[1]
-            logme('Scaling SY/SX : '+"{:+.3f}".format(ratio))
+            if LG == 1:
+                logme('Facteur d\'échelle SY/SX : '+"{:+.3f}".format(ratio))
+            else:
+                logme('Scaling SY/SX : '+"{:+.3f}".format(ratio))
             NewImg, newiw=circularise2(img2,iw,ih,ratio)
-        
         else:
-            #methode des limbes pour forcer le ratio SY/SX
-            logme('Scaling SY/SX fixe: '+"{:+.3f}".format(ratio_fixe))
+            # Methode des limbes pour forcer le ratio SY/SX
+            if LG == 1:
+                logme('Facteur d\'échelle fixe SY/SX : '+"{:+.3f}".format(ratio_fixe))
+            else:
+                logme('Fixed Scaling SY/SX : '+"{:+.3f}".format(ratio_fixe))
+
             if k==0:
                 NewImg, newiw,flag_nobords,cercle =circularise(img2,iw,ih,ratio_fixe)
             else:
@@ -888,11 +913,9 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
         frame=np.array(NewImg, dtype='uint16')
         #print('shape',frame.shape)
        
-        
-       
         """
         ----------------------------------------------------------------------
-        sanity check, second iteration et calcul des parametres du disk occulteur
+        Sanity check, second iteration et calcul des parametres du disk occulteur
         ----------------------------------------------------------------------
         """
         if flag_nobords:
@@ -908,7 +931,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
             ratio=EllipseFit[2]/EllipseFit[1]
             
             if abs(ratio-1)>=1 and k==0 and ratio_fixe==0: #0.01
-                logme('ratio iteration2 :'+ str(ratio))
+                logme('Ratio iteration2 :'+ str(ratio))
                 NewImg, newiw=circularise2(frame,newiw,ih,ratio)
                 frame=np.array(NewImg, dtype='uint16')
                 X= detect_edge (frame, zexcl=0.1,crop=crop, disp_log=False)
@@ -921,16 +944,31 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
                 he=round(EllipseFit[2])
                 cercle=[xc,yc,wi,he]
                 r=round(min(wi-5,he-5)-4)
-                logme('Final SY/SX :'+ "{:+.3f}".format(he/wi))
-                logme('Centre xc,yc et rayon : '+str(xc)+' '+str(yc)+' '+str(int(r)))
+                if LG == 1:
+                    logme('Final SY/SX :'+ "{:+.3f}".format(he/wi))
+                    logme('Centre xc,yc et rayon : '+str(xc)+' '+str(yc)+' '+str(int(r)))
+                else:
+                    logme('Final SY/SX :'+ "{:+.3f}".format(he/wi))
+                    logme('xc,yc center and radius : '+str(xc)+' '+str(yc)+' '+str(int(r)))
     
-        
-        # sauvegarde en fits de l'image finale
+        if k==0:
+           cercle0=cercle
+           geom.append(ratio_fixe_d1)
+           geom.append(ang_tilt)
+           
+        # Sauvegarde en fits de l'image finale
         frame=np.array(frame, dtype='uint16')
         hdr['NAXIS1']=newiw
-        DiskHDU=fits.PrimaryHDU(frame,header=hdr)
-        DiskHDU.writeto(basefich+'_recon'+img_suff[k], overwrite='True')
         
+        hdr['INTI_XC'] = cercle0[0]
+        hdr['INTI_YC'] = cercle0[1]
+        hdr['INTI_R'] = cercle0[2]
+        hdr['INTI_Y1'] = y1_img
+        hdr['INTI_Y2'] = y2_img
+    
+        DiskHDU=fits.PrimaryHDU(frame,header=hdr)
+        DiskHDU.writeto(basefich+img_suff[k]+'_recon.fits', overwrite='True')
+     
         with  open(basefich+'_log.txt', "w") as logfile:
             logfile.writelines(mylog)
         
@@ -939,9 +977,5 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt):
         
         frames.append(frame)
         
-        if k==0:
-            cercle0=cercle
-
-
-    return frames, hdr, cercle0
+    return frames, hdr, cercle0, range_dec, geom
     
