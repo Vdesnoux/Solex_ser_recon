@@ -15,6 +15,10 @@ import ellipse as el
 from matplotlib.patches import Ellipse
 
 """
+version du 12 mai 2022
+- modif fonction detect_bord avec clip moyenne pour eviter mauvaise detection
+sur zone brillante avec le calcul du gradient
+
 Version 23 avril 2022
 - Christian: ajout fonction de detection du min local d'une raie GET_LINE_POS_ABSORPTION
 
@@ -46,14 +50,22 @@ def logme(toprint):
 
 def detect_bord (img, axis, offset):
     #axis donne la direction de detection des bords si 1 vertical, ou 0 horiz
-    #offset decalage la coordonnée pour prendre en compte le lissage gaussien
+    #offset: decalage la coordonnée pour prendre en compte le lissage gaussien
+    
+
+    # pretraite l'image pour eliminer les zone trop blanche
+    img_mean=1.3*np.mean(img) #facteur 1.3 pour eviter des artefacts de bords
+    img_c=np.copy(img)
+    img_c[img_c>img_mean]=img_mean
+    
+    # on part de cette image pour la detection haut bas
     ih=img.shape[0]
     iw=img.shape[1]
     debug=False
     if axis==1:
         # Determination des limites de la projection du soleil sur l'axe Y
         #ymean=np.mean(img[10:,:-10],1)
-        ymean=np.mean(img,1)
+        ymean=np.mean(img_c,1)
         if debug:
             plt.plot(ymean)
             plt.title('Profil Y')
@@ -75,18 +87,20 @@ def detect_bord (img, axis, offset):
     else:
         # Determination des limites de la projection du soleil sur l'axe X
         # Elimine artefact de bords
-        xmean=np.mean(img[10:,:-10],0)
-        #plt.title('Profil X ')
-        #plt.plot(xmean)
-        #plt.show()
+        xmean=np.mean(img_c[10:,:-10],0)
+        if debug:
+            plt.title('Profil X ')
+            plt.plot(xmean)
+            plt.show()
         b=np.max(xmean)
         bb=b*0.5
         xmean[xmean>bb]=bb
         xmean=gaussian_filter1d(xmean, 11)
         xth=np.gradient(xmean)
-        #plt.plot(xth)
-        #plt.title('Gradient Profil X - filtre gaussien ')
-        #plt.show()
+        if debug:
+            plt.plot(xth)
+            plt.title('Gradient Profil X - filtre gaussien ')
+            plt.show()
         x1=xth.argmax()-offset
         x2=xth.argmin()+offset
         #test si pas de bord en x
@@ -267,11 +281,12 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     else:
         myimg_crop=myimg
     #detect si pas de limbes droits et/ou gauche
+    
     y1,y2=detect_bord (myimg_crop, axis=1,offset=5)    # bords verticaux
     y1=y1+crop
     y2=y2+crop
     
-    #print(y1,y2)
+    #print('detect edge y1,y2', y1, y2)
     
     #mid=int((y2-y1)/2)+y1
 

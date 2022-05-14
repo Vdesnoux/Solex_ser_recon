@@ -15,6 +15,9 @@ automatiquement
 - sauvegarde fichier avec pixel shift in filename if shift<>0
 
 -----------------------------------------------------------------------------------------------------------------
+Version du 12 mai 2022
+- ajout fenetre de zoom avec curseur souris sur disk, protus, clahe
+
 version du 27 avril 2022 - Paris
 - correction bug multiple fichier test si pas de nom de fichier
 
@@ -92,12 +95,21 @@ import PySimpleGUI as sg
 
 # -------------------------------------------------------------
 global LG # Langue de l'interfacer (1 = FR ou 2 = US)
-LG = 1
+LG = 2
 # -------------------------------------------------------------
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V3.2.2 by V.Desnoux et.al. '
+current_version = 'Inti V3.3.0 by V.Desnoux et.al. '
+
+def mouse_event_callback( event,x,y,flags,param):
+    if event == cv2.EVENT_MOUSEMOVE:
+        try :
+            param=param[y-150:y+150,x-150:x+150]
+            cv2.imshow('Zoom', param)
+        except:
+            pass
+
 
 def collapse(layout, key):
     """
@@ -481,6 +493,13 @@ for serfile in serfiles:
     cv2.resizeWindow('clahe',(int(newiw*sc), int(ih*sc)))
     
     
+    if len(frames)==1 and len(serfiles)==1:
+        cv2.namedWindow('Zoom', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('Zoom', 300, 300)
+        cv2.moveWindow('Zoom',20,20)
+
+    
+    
     # create a CLAHE object (Arguments are optional)
     #clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(5,5))
     clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
@@ -500,6 +519,12 @@ for serfile in serfiles:
     fc=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
     fc[fc<0]=0
     frame_contrasted=np.array(fc, dtype='uint16')
+    if len(frames)==1 and len(serfiles)==1:
+        param=np.copy(frame_contrasted)
+        cv2.setMouseCallback('contrast',mouse_event_callback, param)
+    cv2.imshow('contrast',frame_contrasted)
+    
+    
     #cv2.imshow('sun',frame_contrasted)
     #cv2.waitKey(0)
 
@@ -517,7 +542,7 @@ for serfile in serfiles:
     fc2=(frame1-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
     fc2[fc2<0]=0
     frame_contrasted2=np.array(fc2, dtype='uint16')
-    cv2.imshow('contrast',frame_contrasted2)
+    #cv2.imshow('contrast',frame_contrasted2)
     #cv2.waitKey(0)
     
     if 2==1:   
@@ -563,6 +588,9 @@ for serfile in serfiles:
             Threshold_low=0
             img_seuil=seuil_image_force(frame1, Threshold_Upper, Threshold_low)
             frame_contrasted3=np.array(img_seuil, dtype='uint16')
+            if len(frames)==1 and len(serfiles)==1:
+                param=np.copy(frame_contrasted3)
+                cv2.setMouseCallback('protus',mouse_event_callback, param)
             cv2.imshow('protus',frame_contrasted3)
         else:
             if LG == 1:
@@ -577,6 +605,9 @@ for serfile in serfiles:
     cc=(cl1-Seuil_bas)*(65000/(Seuil_haut-Seuil_bas))
     cc[cc<0]=0
     cc=np.array(cc, dtype='uint16')
+    if len(frames)==1 and len(serfiles)==1:
+        param=np.copy(cc)
+        cv2.setMouseCallback('clahe',mouse_event_callback, param)
     cv2.imshow('clahe',cc)
     
     if len(frames) >1:

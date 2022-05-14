@@ -6,6 +6,8 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+
+
 Version du 28 avril 2022 - paris
 - mise en commentaire malheureuse de la zone de filtrage disque qui n'excluait plus les bords
 
@@ -602,6 +604,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly):
         marge=15
         ysum=ysum[y1+marge:y2-marge]
         
+        
         # filtrage sur fenetre de 31 pixels, polynome ordre 3 (etait 101 avant)
         yc=savgol_filter(ysum,31, 3)
         #plt.plot(yc)
@@ -631,7 +634,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly):
             m=origimg[c-7:c+6,] #now refer to original image 
             s=np.median(m,0)
             img[c-1:c,]=s
-        
+    
+
         
         """
         --------------------------------------------------------------
@@ -692,7 +696,20 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly):
         
         ToSpline= ydisk[y1:y2]
         
-        Smoothed2=savgol_filter(ToSpline,301, 3) # window size, polynomial order
+        winterp=301
+        if len(ToSpline)<301 :
+            
+            if LG == 1:
+                logme('Hauteur du disque anormalement faible : '+str(y1)+' '+str(y2))
+            else:
+                logme('Disk Height abnormally low : '+str(y1)+' '+str(y2))
+            
+            if len(ToSpline)%2==0 :
+                winterp=len(ToSpline)-10+1
+            else:
+                winterp=len(ToSpline)-10
+        
+        Smoothed2=savgol_filter(ToSpline,winterp, 3) # window size, polynomial order
 
         if debug:
             plt.plot(ToSpline)
