@@ -226,8 +226,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly):
         logme ('Largeur et hauteur des trames SER : ' + str(Width)+','+str(Height))
         logme ('Nombre de trames : '+str( FrameCount))
     else:
-        logme ('Wide and Heiht of SER frames : ' + str(Width)+','+str(Height))
-        logme ('Frames number : '+str( FrameCount))
+        logme ('Width and Height of SER frames : ' + str(Width)+','+str(Height))
+        logme ('Number of frames : '+str( FrameCount))
  
     try:
         #logme ('ser date : '+str(dateSer))
