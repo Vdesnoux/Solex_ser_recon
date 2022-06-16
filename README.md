@@ -60,6 +60,8 @@ La liste des dépendances se trouve dans le fichier requirements.txt
 - astropy==4.2
 - PySimpleGUI==4.38.0
 - lsq-ellipse==2.0.1
+- PyYAML==5.4.1
+- serfilesreader==0.0.6
 
 Pour une installation automatique taper :
 
