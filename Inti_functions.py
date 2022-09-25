@@ -13,8 +13,12 @@ import sys
 from scipy.ndimage import gaussian_filter1d
 import ellipse as el
 from matplotlib.patches import Ellipse
+import cv2 as cv2
 
 """
+version du xx 
+- introduit le clamp des zones brillantes aussi dans fit_ellipse
+
 version du 12 mai 2022
 - modif fonction detect_bord avec clip moyenne pour eviter mauvaise detection
 sur zone brillante avec le calcul du gradient
@@ -65,8 +69,16 @@ def detect_bord (img, axis, offset):
     if axis==1:
         # Determination des limites de la projection du soleil sur l'axe Y
         #ymean=np.mean(img[10:,:-10],1)
-        ymean=np.mean(img_c,1)
+        if 2==1:  #MattC thresh == True
+            timg=np.array((((img-np.min(img))/(np.max(img)-np.min(img)))*255), dtype='uint8')
+            timg2 = cv2.threshold(timg, 25, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+            ymean=np.mean(timg2[1],1)
+        
+
+        ymean=np.mean(img_c,1) #MattC
         if debug:
+            plt.imshow(img_c)
+            plt.show()
             plt.plot(ymean)
             plt.title('Profil Y')
             plt.show()
@@ -109,6 +121,7 @@ def detect_bord (img, axis, offset):
             x2=iw
         a1=x1
         a2=x2
+        
     return (a1,a2)
 
 def detect_y_of_x (img, x1,x2):
@@ -175,7 +188,7 @@ def circularise (img,iw,ih,ratio_fixe,*args): #methode des limbes
     else:
         y1=args[0]
         y2=args[1]
-        #print ("force y,y2 ",y1,y2)
+       # print ("force y1,y2 ",y1,y2)
     
     x1,x2=detect_bord (img, axis=0,offset=5)    # bords horizontaux
     #logme('Position X des limbes droit et gauche x1, x2 : '+str(x1)+' '+str(x2))
@@ -275,6 +288,9 @@ def detect_noXlimbs (myimg):
 def detect_edge (myimg,zexcl, crop, disp_log):
     edgeX=[]
     edgeY=[]
+    
+    debug=False
+    
     if crop!=0:
         myimg_crop=myimg[crop:-crop,:]
         #print("crop...", crop)
@@ -292,32 +308,41 @@ def detect_edge (myimg,zexcl, crop, disp_log):
 
     zone_fit=abs(y2-y1)
     ze=int(zexcl*zone_fit)
+    
+    # pretraite l'image pour eliminer les zone trop blanche
+    img_mean=1.3*np.mean(myimg) #facteur 1.3 pour eviter des artefacts de bords
+    img_c=np.copy(myimg)
+    img_c[img_c>img_mean]=img_mean
+    k=0
 
 
     for i in range(y1+ze,y2-ze):
-        li=np.copy(myimg[i,:-5])
+        li=np.copy(img_c[i,:-5])
+        
         
         #method detect_bord same as flat median
         offset=0
         b=np.percentile(li,97)
-        bb=b*0.5
+        bb=b*0.7 #was 0.5
+        #print("seuil edge : ", b," ",bb)
 
         li[li>bb]=bb
         li_filter=gaussian_filter1d(li, 11)
         li_gr=np.gradient(li_filter)
         
-        """
-        for debug
-        if i==mid:
-            plt.plot(li)
-            plt.title('Profil ligne - filtre gaussien ')
-            plt.show()
-            plt.plot(li_gr)
-            plt.title('Gradient Profil ligne ')
-            plt.show()
-        """   
+        
+        if debug==True:
+            if i in range(y1+ze+1, y1+ze+3):
+                plt.plot(li)
+                plt.title('Profil ligne - filtre gaussien '+str(i))
+                plt.show()
+                plt.plot(li_gr)
+                plt.title('Gradient Profil ligne '+str(i))
+                plt.show()
+           
         x1=li_gr.argmax()
         x2=li_gr.argmin()
+        x_argsort=li_gr.argsort()
 
         s=np.array([x1,x2])
         
@@ -328,8 +353,15 @@ def detect_edge (myimg,zexcl, crop, disp_log):
             edgeY.append(i)
             edgeX.append(c_x2)
             edgeY.append(i)
-                
-        X = np.array(list(zip(edgeX, edgeY)))   
+            k=k+1
+    if debug:
+        ex=np.copy(edgeX)
+        gr_ex=np.gradient(ex)
+        plt.plot(ex)
+        plt.show()
+        plt.plot(gr_ex)
+        plt.show()
+    X = np.array(list(zip(edgeX, edgeY)))   
 
     return X
 
