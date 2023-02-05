@@ -9,7 +9,31 @@ Front end de traitements spectro helio de fichier ser
 - interface pour selectionner un ou plusieurs fichiers
 - appel au module inti_recon qui traite la sequence et genere les fichiers fits
 
+
 ----------------------------------------------------------------------------------------------------------------
+version du 3 fev 2023 - Paris
+- ajout bouton pour avoir la date du fichier ser 
+- affiche date du fichier ser a la selection du fichier
+
+version du 29 jan 2022 antibes V4.0.2
+- ajout sauvegarde jpg avec facteur compression de 0.0038 des intensités et nom fichier fits database filename
+- ajout de requete VO pour recuperer image jpg a la date d'observation pour affichage
+- inversion coordonnées zoom et flip image
+- bug fix sur hauteur image doppler
+
+Version 26 dec 2022 Paris V4.0.1
+- ajout rotation angle P manuel dans mode avancé
+- ajout des mots clef fits demandé par JM Malherbe
+FILENAME= 'solex_meudon _ha_20180620_122805.fits' /instrument, raie, date, heure (voir ci-dessous)
+DATE_OBS= '2018-06-20T12:28:05.000' /date et heure TU de l’observation
+INSTRUME= 'meudon' /instrument (à changer)
+CONTACT = 'observateurs.solaires@obspm.fr' /adresse de contact
+PHYSPARA= 'Intensity'
+WAVELNTH= 6562.762 / en Angström, à changer selon raie (voir ci-dessous)
+WAVEUNIT= -10
+- inversion haut-bas des images png pour etre en conformité avec orientation image fits
+- ajout de la connexion avec site kso pour obtention angle P a partir d'un champ dataobs
+- inverse sens angle tilt correction avec flip
 
 Version 17 sept 2022 Paris V3.3.6 > V4.0.0
 - image trame mean en cv2 pour pointer une raie avec la souris en mode raie libre
@@ -104,9 +128,13 @@ from Inti_functions import *
 import yaml
 # import shutil
 # import tkinter as tk
+import math
+import requests as rq
+import webbrowser as web
+import urllib.request
+from datetime import datetime 
+from serfilesreader.serfilesreader import Serfile
 
-
-#import time
 
 import PySimpleGUI as sg
 
@@ -117,12 +145,29 @@ LG = 1
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V4.0.0 by V.Desnoux et.al. '
+current_version = 'Inti V4.0.2 by V.Desnoux et.al. '
+
+
+def get_sun_meudon (date_jd1):
+    date_jd2=date_jd1+1
+    r1="http://voparis-tap-helio.obspm.fr/__system__/tap/run/sync?LANG=ADQL&format=txt&"
+    r2="request=doQuery&query=select%20access_url%20from%20bass2000.epn_core%20where%20time_min%20between%20"
+    r3=str(date_jd1)+"%20and%20"+str(date_jd2)+"%20and%20access_format=%27image/jpeg%27%20"
+    r4="and%20filter=%27H%20Alpha%27"
+    Vo_req=r1+r2+r3+r4
+
+    reponse_web=rq.get(Vo_req)
+    sun_meudon=reponse_web.text.split("\n")[0]
+    
+    return sun_meudon
+
 
 def mouse_event_callback( event,x,y,flags,param):
     if event == cv2.EVENT_MOUSEMOVE:
         try :
+            y=param.shape[0]-y
             param=param[y-150:y+150,x-150:x+150]
+            param=cv2.flip(param,0)
             cv2.imshow('Zoom', param)
         except:
             pass
@@ -183,7 +228,7 @@ def collapse(layout, key):
 
 
 
-def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, poly, pos_free_blue, pos_free_red,win_pos, previous_serfile, data_entete):
+def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, poly, pos_free_blue, pos_free_red,win_pos, previous_serfile, data_entete,saved_angP):
 
     sg.theme('Dark2')
     sg.theme_button_color(('white', '#500000'))
@@ -195,6 +240,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Flags["POL"]=False
     Flags["WEAK"]=False
     Racines=[]
+    list_wave=[['Manual','Ha','CaK3', 'CaK1v','HeID3', 'CaH'],[0,6562.762,3933.663,3932.163, 3968.469,5877.3]]
 
     
     if LG == 1:
@@ -204,6 +250,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 [sg.Checkbox(' Force les valeurs tilt et facteur d\'echelle', default=False, key='-F_ANG_SXSY-')],
                 [sg.Text('Angle Tilt en degrés :', size=(15,1)), sg.Input(default_text=saved_tilt, size=(6,1),key='-TILT-')],
                 [sg.Text('Ratio SY/SX :', size=(15,1)), sg.Input(default_text=saved_ratio, size=(6,1),key='-RATIO-')]
+                
                 ]
     else:
         section1 = [
@@ -212,24 +259,50 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 [sg.Checkbox(' Force values of tilt and scale ratio', default=False, key='-F_ANG_SXSY-')],
                 [sg.Text('Tilt angle in degrees :', size=(15,1)), sg.Input(default_text=saved_tilt, size=(6,1),key='-TILT-')],
                 [sg.Text('SY/SX ratio :', size=(15,1)), sg.Input(default_text=saved_ratio, size=(6,1),key='-RATIO-')]
+                
                 ]
         
     
     if LG == 1:
         section2 = [
-                [sg.Text('Observateur :', size=(10,1)), sg.Input(default_text=data_entete[0], size=(20,1),key='-OBSERVER-')],
-                [sg.Text('Site Long :', size=(10,1)), sg.Input(default_text=data_entete[2], size=(10,1),key='-SITE_LONG-'),
-                 sg.Text('  Site Lat :', size=(10,1)), sg.Input(default_text=data_entete[3], size=(10,1),key='-SITE_LAT-'),
+                [sg.Text('Observateur :', size=(12,1)), sg.Input(default_text=data_entete[0], size=(25,1),key='-OBSERVER-')],
+                [sg.Text('Contact :', size=(12,1)), sg.Input(default_text=data_entete[4], size=(25,1),key='-CONTACT-')],
+                [sg.Text('Site Long :', size=(12,1)), sg.Input(default_text=data_entete[2], size=(6,1),key='-SITE_LONG-'),sg.Text('N positif'),
+                 sg.Text('  Site Lat :', size=(12,1)), sg.Input(default_text=data_entete[3], size=(6,1),key='-SITE_LAT-'), sg.Text('E positif'),
                  sg.Text(' in decimal degree')],
-                [sg.Text('Instrument :', size=(10,1)), sg.Input(default_text=data_entete[1], size=(35,1),key='-INSTRU-')]
+                [sg.Text('Instrument :', size=(12,1)), sg.Input(default_text=data_entete[1], size=(35,1),key='-INSTRU-')],
+                [sg.Text('Longueur d\'onde :', size=(12,1)), sg.Combo(list_wave[0], default_value=list_wave[0][0], size=(10,1),key='-WAVE-',enable_events=True),
+                 sg.Text(list_wave[1][0], key='-WAVEVAL-')],
+                [sg.Text('Date et heure :',size=(12,1)),sg.Input(default_text='', size=(26,1),key='-DATEOBS-'),
+                     sg.Button('Date', key='-GETDATE-'),sg.Button('Meudon', key='-CLIMSO-'),
+                     sg.Text('BASS2000', key='-BASS-', enable_events=True, font="None 9 italic underline"), 
+                     sg.Text('NSO', key='-NSO-',enable_events=True, font="None 9 italic underline")],
+                [sg.Text('Angle P :', size=(12,1)), sg.Input(default_text=saved_angP, size=(10,1),key='-ANGP-'), 
+                 sg.Text("Nord en haut, Est à gauche, angle P positif vers l\'Est"), sg.Button('KSO',key='-KSO-')],
+                [sg.Checkbox(' Inversion E-W', default=False, key='-RA_FLIP-')],
+                [sg.Checkbox(' Inversion N-S', default=False, key='-NS_FLIP-')]
+            
                 ]
     else:
         section2 = [
-                [sg.Text('Observer :', size=(10,1)), sg.Input(default_text=data_entete[0], size=(25,1),key='-OBSERVER-')],
-                [sg.Text('Site Long :', size=(10,1)), sg.Input(default_text=data_entete[2], size=(10,1),key='-SITE_LONG-'),
-                 sg.Text('  Site Lat :', size=(10,1)), sg.Input(default_text=data_entete[3], size=(10,1),key='-SITE_LAT-'),
+                [sg.Text('Observer :', size=(12,1)), sg.Input(default_text=data_entete[0], size=(25,1),key='-OBSERVER-')],
+                [sg.Text('Contact :', size=(12,1)), sg.Input(default_text=data_entete[4], size=(25,1),key='-CONTACT-')],
+                [sg.Text('Site Long :', size=(12,1)), sg.Input(default_text=data_entete[2], size=(6,1),key='-SITE_LONG-'),sg.Text('N positive'),
+                 sg.Text('  Site Lat :', size=(12,1)), sg.Input(default_text=data_entete[3], size=(6,1),key='-SITE_LAT-'),sg.Text('E positive'),
                  sg.Text(' in decimal degree')],
-                [sg.Text('Instrument :', size=(10,1)), sg.Input(default_text=data_entete[1], size=(35,1),key='-INSTRU-')]
+                [sg.Text('Instrument :', size=(12,1)), sg.Input(default_text=data_entete[1], size=(35,1),key='-INSTRU-')],
+                [sg.Text('Wavelength :', size=(12,1)), sg.Combo(list_wave[0], default_value=list_wave[0][0], size=(10,1),key='-WAVE-',enable_events=True), 
+                 sg.Text(list_wave[1][0], key='-WAVEVAL-')],
+                [sg.Text('Date and time :',size=(12,1)),sg.Input(default_text='', size=(26,1),key='-DATEOBS-'),
+                     sg.Button('Date', key='-GETDATE-'),sg.Button('Meudon', key='-CLIMSO-'),
+                     sg.Text('BASS2000', key='-BASS-', enable_events=True, font="None 9 italic underline"), 
+                     sg.Text('NSO', key='-NSO-',enable_events=True, font="None 9 italic underline")],
+                [sg.Text('P Angle :', size=(12,1)), sg.Input(default_text=saved_angP, size=(10,1),key='-ANGP-'), 
+                 sg.Text("North up, Est left, P angle positive towards Est"), sg.Button('KSO',key='-KSO-')],
+                [sg.Checkbox(' E-W flip', default=False, key='-RA_FLIP-')],
+                [sg.Checkbox(' N-S flip', default=False, key='-NS_FLIP-')]
+                
+                
                 ]
       
     if LG == 1:
@@ -242,7 +315,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             [sg.T("")],
             #### Section 2 part ####
             [sg.T(SYMBOL_UP, enable_events=True, k='-OPEN SEC2-', text_color='white'), 
-             sg.T('Entête', enable_events=True, text_color='white', k='-OPEN SEC2-TEXT')],
+             sg.T('Database compatibilité', enable_events=True, text_color='white', k='-OPEN SEC2-TEXT')],
             [collapse(section2, '-SEC2-')],
             [sg.T("")],
             [sg.Text('Décalage en pixels :',size=(15,1)),sg.Input(default_text='0',size=(4,1),key='-DX-',enable_events=True)]
@@ -295,7 +368,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             [sg.T("")],
             #### Section 2 part ####
             [sg.T(SYMBOL_UP, enable_events=True, k='-OPEN SEC2-', text_color='white'), 
-             sg.T('Header', enable_events=True, text_color='white', k='-OPEN SEC2-TEXT')],
+             sg.T('Database compatibility', enable_events=True, text_color='white', k='-OPEN SEC2-TEXT')],
             [collapse(section2, '-SEC2-')],
             [sg.T("")],
             [sg.Text('Shift in pixels :',size=(11,1)),sg.Input(default_text='0',size=(4,1),key='-DX-',enable_events=True)]
@@ -343,7 +416,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     
     if LG == 1:
         layout = [
-            [sg.Text('Fichier(s) :', size=(6, 1)), sg.InputText(default_text='',size=(66,1),key='-FILE-'),
+            [sg.Text('Fichier(s) :', size=(6, 1)), sg.InputText(default_text='',size=(66,1),enable_events=True,key='-FILE-'),
              sg.FilesBrowse(' Ouvrir ',file_types=(("SER Files", "*.ser"),),initial_folder=os.path.join(WorkDir,previous_serfile))],
             
             [sg.TabGroup([[sg.Tab('  Général  ', tab1_layout), sg.Tab('Doppler & Continuum', tab2_layout,), 
@@ -355,7 +428,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             ]
     else:
         layout = [
-            [sg.Text('File(s) :', size=(5, 1)), sg.InputText(default_text='',size=(70,1),key='-FILE-'),
+            [sg.Text('File(s) :', size=(5, 1)), sg.InputText(default_text='',size=(70,1),enable_events=True,key='-FILE-'),
              sg.FilesBrowse(' Open ',file_types=(("SER Files", "*.ser"),),initial_folder=os.path.join(WorkDir,previous_serfile))],
             
             [sg.TabGroup([[sg.Tab('  General  ', tab1_layout), sg.Tab('Doppler & Continuum', tab2_layout,), 
@@ -376,9 +449,12 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     window['-FILE-'].update(os.path.join(WorkDir,previous_serfile)) 
     window.BringToFront()
     Flag_sortie=False
+    wavelength_found=list_wave[1][0]
+    solar_dict={}
     
     while True:
         event, values = window.read()
+        #print(event)
         if event==sg.WIN_CLOSED or event=='  Exit  ' or event=='  Sortir  ': 
             Flag_sortie=True
             break
@@ -418,7 +494,28 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 Flags["POL"]=False
                 Flags["WEAK"]=False
                 
-
+        if event=='-FILE-' or event=='-GETDATE-':
+            serfiles=values['-FILE-']
+            serfiles=serfiles.split(';')
+            serfile=serfiles[0]
+            #print(serfiles)
+            base=os.path.basename(values['-FILE-'])
+            basefich=os.path.splitext(base)[0]
+            if basefich!='':
+                if len(serfiles)==1 :
+                    try:
+                        scan = Serfile(serfile, False)
+                        #dateSerUTC = scan.getHeader()['DateTimeUTC']
+                        f_dateSerUTC=datetime.fromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
+                        fits_dateobs=f_dateSerUTC.strftime('%Y-%m-%dT%H:%M:%S.%f7%z')
+                        window['-DATEOBS-'].update(fits_dateobs)
+                    except:
+                        if LG==1 :
+                            logme('Erreur ouverture fichier : '+serfile)
+                        else:
+                            logme('File open error : '+serfile)
+                    
+                    
         
         if event=='Ok':
 
@@ -426,6 +523,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             #os.chdir(WorkDir)
             base=os.path.basename(values['-FILE-'])
             basefich=os.path.splitext(base)[0]
+            
             if basefich!='':
                 break
             else:
@@ -452,6 +550,80 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 xline=xmin-float(values['fa'])*y_xmin**2-float(values['fb'])*y_xmin
                 window["fc"].update("{:.1f}".format(xline))
                 poly[2]=xline
+                
+        if event=="-WAVE-" :
+            #print(values['-WAVE-'])
+            search_label=values['-WAVE-']
+            wavelength_found=list_wave[1][list_wave[0].index(search_label)]
+            window['-WAVEVAL-'].update(wavelength_found)
+            
+        if event=="-KSO-" :
+            try :
+                fits_dateobs=values['-DATEOBS-']
+                date_obs=fits_dateobs.split('T')[0].replace('-','')
+                heure_obs=fits_dateobs.split('T')[1].split('.')[0].replace(':','%3A')
+                str_site_lat=str(values['-SITE_LAT-'])
+                str_site_long=str(values['-SITE_LONG-'])
+                webservice='https://www.kso.ac.at/beobachtungen/ephem_api.php?date='+date_obs+'&time='+heure_obs+'&lat='+str_site_lat+'&lon='+str_site_long+"&P"
+                #print(webservice)
+                reponse_web=rq.get(webservice)
+                #print(reponse_web.text)
+                window['-ANGP-'].update("{:+.3f}".format(float(reponse_web.text)))
+                # autres services 
+                webservice='https://www.kso.ac.at/beobachtungen/ephem_api.php?date='+date_obs+'&time='+heure_obs+'&lat='+str_site_lat+'&lon='+str_site_long+"&B0&Lon&Carr"
+                #print(webservice)
+                reponse_web=rq.get(webservice)
+                solar_data=reponse_web.text.split('\n')
+                solar_dict['B0']=solar_data[0]
+                solar_dict['L0']=solar_data[1]
+                solar_dict['Carr']=solar_data[2]
+                
+            except:
+                if LG==1 :
+                    logme("Erreur dans le format des données")
+                else:
+                    logme("Error in data formatting")
+                    
+        if event=='-CLIMSO-' :
+            fmt = '%Y%m%d'
+            #date_obs='20211213'
+            fits_dateobs=values['-DATEOBS-']
+            if fits_dateobs!='' :
+                date_obs=fits_dateobs.split('T')[0].replace('-','')
+                s=date_obs
+                my_date = datetime.strptime(s, fmt)
+                date_jd1=float(my_date.toordinal() + 1721424.5)
+                sun_meudon=get_sun_meudon(date_jd1)
+    
+                while sun_meudon =='' :
+                    date_jd1=date_jd1-1
+                    sun_meudon=get_sun_meudon(date_jd1) 
+    
+                print('Meudon Spectro Halpha at closest date : ',sun_meudon)
+                urllib.request.urlretrieve(sun_meudon, 'meudon.jpg')
+                
+                # affiche meudon.jpg depuis le site de BASS2000
+                web.open('meudon.jpg')
+                
+                # recupère le nom du fichier en cours
+                base=os.path.basename(values['-FILE-'])
+                basefich=os.path.splitext(base)[0]
+                # son repertoire
+                curr_dir=os.path.split(values['-FILE-'])[0]
+                
+                if basefich!='':
+                    # contruit le nom du fichier _clahe.png 
+                    myimage=curr_dir+'/_'+basefich+'_clahe.png'
+                    # affiche le fichier si il existe
+                    if os.path.exists(myimage):
+                        web.open(myimage)
+        
+        if event=='-NSO-':
+            web.open('https://nso.edu/')
+            
+        if event=='-BASS-':
+            web.open('https://bass2000.obspm.fr/home.php')
+
 
     window.close()
     try:          
@@ -463,19 +635,29 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             #FileNames=''
 
     
-    
-    Flags["RTDISP"]=values['-DISP-']
+    try :
+        Flags["RTDISP"]=values['-DISP-']
+    except:
+        pass
     #Flags["DOPCONT"]=values['-DOPCONT-']
     Flags["ALLFITS"]=values['-SFIT-']
     #Flags["VOL"]=values['-VOL-']
     #Flags["POL"]=values['-POL-']
     #Flags["WEAK"]=values['-WEAK-']
     Flags["sortie"]=Flag_sortie
+    Flags["FLIPRA"]=values['-RA_FLIP-']
+    Flags["FLIPNS"]=values['-NS_FLIP-']
    # print(Flags)
     
     ratio_fixe=float(values['-RATIO-'])
     ang_tilt=values['-TILT-']
-    Data_entete=[values['-OBSERVER-'], values['-INSTRU-'], float(values['-SITE_LONG-']), float(values['-SITE_LAT-'])]
+    centered_wave=wavelength_found
+    centered_wave_label=values['-WAVE-']
+    if centered_wave_label.isdigit():
+        centered_wave=str(round(float(centered_wave)))
+    
+    Data_entete=[values['-OBSERVER-'], values['-INSTRU-'], float(values['-SITE_LONG-']), float(values['-SITE_LAT-']), values['-CONTACT-'], centered_wave, centered_wave_label]
+    ang_P=float(values['-ANGP-']) 
     
     if Flags["WEAK"] :
         poly=[]
@@ -515,7 +697,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Racines.append(values['racine_bleu'])
     Racines.append(values['racine_rouge'])
     
-    return FileNames, Shift, Flags, ratio_fixe,ang_tilt, poly, Racines, Data_entete
+    return FileNames, Shift, Flags, ratio_fixe,ang_tilt, poly, Racines, Data_entete,ang_P, solar_dict
 
 """
 -------------------------------------------------------------------------------------------
@@ -539,7 +721,8 @@ while not Flag_sortie :
     my_dictini={'directory':'', 'dec doppler':3, 'dec cont':15, 'poly_slit_a':0, "poly_slit_b":0,'poly_slit_c':0, 
                 'ang_tilt':0, 'ratio_sysx':0, 'poly_free_a':0,'poly_free_b':0,'poly_free_c':0,
                 'pos_free_blue':0, 'pos_free_red':0,
-                'win_posx':300, 'win_posy':200, 'observer':'', 'instru':'','site_long':0, 'site_lat':0}
+                'win_posx':300, 'win_posy':200, 'observer':'', 'instru':'','site_long':0, 'site_lat':0,
+                'angle P':0,'contact':'','wavelength':0, 'wave_label':'Manuel'}
     #print('myini de depart:', my_ini)
     poly=[]
     
@@ -559,6 +742,7 @@ while not Flag_sortie :
     dec_pix_dop=int(my_dictini['dec doppler'])
     dec_pix_cont=int(my_dictini['dec cont'])
     saved_tilt=float(my_dictini['ang_tilt'])
+    saved_angP=float(my_dictini['angle P'])
     saved_ratio=float(my_dictini['ratio_sysx'])
     poly.append(float(my_dictini['poly_free_a']))
     poly.append(float(my_dictini['poly_free_b']))
@@ -568,14 +752,15 @@ while not Flag_sortie :
     w_posx=int(my_dictini['win_posx'])
     w_posy=int(my_dictini['win_posy'])
     win_pos=(w_posx,w_posy)
-    data_entete=[my_dictini['observer'], my_dictini['instru'],float(my_dictini['site_long']),float(my_dictini['site_lat'])]
+    data_entete=[my_dictini['observer'], my_dictini['instru'],float(my_dictini['site_long']),float(my_dictini['site_lat']),my_dictini['contact'],
+                 my_dictini['wavelength'],my_dictini['wave_label']]
     
     
     # Recupere paramatres de la boite de dialogue
     #print('serfile previous : ', previous_serfile)
-    serfiles, Shift, Flags, ratio_fixe,ang_tilt, poly, racines, data_entete= UI_SerBrowse(WorkDir, saved_tilt, saved_ratio,
+    serfiles, Shift, Flags, ratio_fixe,ang_tilt, poly, racines, data_entete,ang_P,solar_dict= UI_SerBrowse(WorkDir, saved_tilt, saved_ratio,
                                                                              dec_pix_dop, dec_pix_cont, poly,pos_free_blue, pos_free_red,
-                                                                             win_pos, previous_serfile, data_entete)
+                                                                             win_pos, previous_serfile, data_entete,saved_angP)
     serfiles=serfiles.split(';')
     #print('serfile : ',  len(serfiles))
     if len(serfiles)==1 :
@@ -626,7 +811,7 @@ while not Flag_sortie :
             ang_tilt=geom[1]
         
         # 11 aout 22 ajout coef polynome en param de retour
-        frames, header, cercle, range_dec, geom, polynome=sol.solex_proc(serfile,Shift,Flags,ratio_fixe,ang_tilt, poly, data_entete)
+        frames, header, cercle, range_dec, geom, polynome=sol.solex_proc(serfile,Shift,Flags,ratio_fixe,ang_tilt, poly, data_entete,ang_P, solar_dict)
         
         # met a jour le repertoire et les flags dans le fichier ini, oui a chaque fichier pour avoir le bon rep
         my_dictini['directory']=WorkDir
@@ -635,6 +820,9 @@ while not Flag_sortie :
         my_dictini['instru']=str(data_entete[1])
         my_dictini['site_long']=data_entete[2]
         my_dictini['site_lat']=data_entete[3]
+        my_dictini['contact']=data_entete[4]
+        my_dictini['wavelength']=data_entete[5]
+        my_dictini['wave_label']=data_entete[6]
         
         if Flags['WEAK']:
            my_dictini['pos_free_blue']=round(poly[2]+Shift[1])
@@ -644,6 +832,7 @@ while not Flag_sortie :
             my_dictini['dec cont']=Shift[2]
 
         my_dictini['ang_tilt']=ang_tilt
+        my_dictini['angle P']=0 # ne conserve pas angle P pour eviter confusion
         my_dictini['ratio_sysx']=ratio_fixe
         my_dictini['win_posx']=w_posx
         my_dictini['win_posy']=w_posy
@@ -673,10 +862,7 @@ while not Flag_sortie :
         #t0=time.time()
         base=os.path.basename(serfile)
         basefich='_'+os.path.splitext(base)[0]
-             
-        #if Shift != 0 :
-            #add shift value in filename to not erase previous file
-            #basefich=basefich+'_dp'+str(Shift) # ajout '_' pour avoir fichier en tete dans explorer/finder
+
     
         ih = frames[0].shape[0]
         newiw = frames[0].shape[1]
@@ -712,6 +898,14 @@ while not Flag_sortie :
         riw=hdu.header['NAXIS1']
         Disk=np.reshape(myspectrum, (rih,riw))
         
+        # Lecture nom filename  image recon
+        if range_dec[0]==0:
+            ImgFile=basefich+'_recon.fits'
+            hdulist = fits.open(ImgFile, memmap=False)
+            hdu=hdulist[0]
+            base_filename=hdu.header['FILENAME'].split('.')[0]
+            #print('filename : ',base_filename)
+        
         Ratio_lum=(65536/np.max(Disk))*0.8
         Disk2=np.array((np.copy(Disk)*Ratio_lum),dtype='uint16')
         hdulist.close()
@@ -743,17 +937,13 @@ while not Flag_sortie :
         
               
         
-        
+        # ne fait un zoom que si on traite un seul fichier et pas doppler/continuum
         if len(frames)==1 and len(serfiles)==1:
             cv2.namedWindow('Zoom', cv2.WINDOW_NORMAL)
             cv2.resizeWindow('Zoom', 300, 300)
             cv2.moveWindow('Zoom',20,20)
     
-        
-        # create a CLAHE object (Arguments are optional)
-        #clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(5,5))
-        clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
-        cl1 = clahe.apply(frames[0])
+
         
         # png image generation
         # image seuils moyen
@@ -772,6 +962,8 @@ while not Flag_sortie :
         if len(frames)==1 and len(serfiles)==1:
             param=np.copy(frame_contrasted)
             cv2.setMouseCallback('contrast',mouse_event_callback, param)
+        frame_contrasted=cv2.flip(frame_contrasted,0)
+       
         cv2.imshow('contrast',frame_contrasted)
         
         
@@ -779,6 +971,7 @@ while not Flag_sortie :
         #cv2.waitKey(0)
     
         # image raw
+        Disk2=cv2.flip(Disk2,0)
         cv2.imshow('Raw',Disk2)
         
         # image seuils serres 
@@ -792,6 +985,7 @@ while not Flag_sortie :
         fc2=(frame1-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
         fc2[fc2<0]=0
         frame_contrasted2=np.array(fc2, dtype='uint16')
+        frame_contrasted2=cv2.flip(frame_contrasted2,0)
         #cv2.imshow('contrast',frame_contrasted2)
         #cv2.waitKey(0)
         
@@ -815,14 +1009,15 @@ while not Flag_sortie :
             #c=(0,0,0)
             frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
             #frame_contrasted3=cv2.ellipse(frame_contrasted3, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC apply tilt, change color to black
+            frame_contrasted3=cv2.flip(frame_contrasted3,0)
             cv2.imshow('protus',frame_contrasted3)
             #cv2.waitKey(0)
         
         #improvements suggested by mattC to hide sun with disk
         else :           
             # hide disk before setting max threshold
-            disk_limit_percent=0.001 # black disk radius inferior by 1% to disk edge
             frame2=np.copy(frames[0])
+            disk_limit_percent=0.001 # black disk radius inferior by 1% to disk edge
             if cercle[0]!=0:
                 x0=cercle[0]
                 y0=cercle[1]
@@ -838,9 +1033,12 @@ while not Flag_sortie :
                 Threshold_low=0
                 img_seuil=seuil_image_force(frame1, Threshold_Upper, Threshold_low)
                 frame_contrasted3=np.array(img_seuil, dtype='uint16')
+                
                 if len(frames)==1 and len(serfiles)==1:
                     param=np.copy(frame_contrasted3)
                     cv2.setMouseCallback('protus',mouse_event_callback, param)
+                
+                frame_contrasted3=cv2.flip(frame_contrasted3,0)
                 cv2.imshow('protus',frame_contrasted3)
             else:
                 if LG == 1:
@@ -849,7 +1047,11 @@ while not Flag_sortie :
                     print("Mask disk error.")
                     
                 frame_contrasted3=frame_contrasted
-            
+
+        # create a CLAHE object (Arguments are optional)
+        #clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(5,5))
+        clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
+        cl1 = clahe.apply(frames[0])
         Seuil_bas=np.percentile(cl1, 25)
         Seuil_haut=np.percentile(cl1,99.9999)*1.05
         cc=(cl1-Seuil_bas)*(65000/(Seuil_haut-Seuil_bas))
@@ -858,7 +1060,9 @@ while not Flag_sortie :
         if len(frames)==1 and len(serfiles)==1:
             param=np.copy(cc)
             cv2.setMouseCallback('clahe',mouse_event_callback, param)
+        cc=cv2.flip(cc,0)
         cv2.imshow('clahe',cc)
+
         
         if len(frames) >1:
             if len(frames)>3:
@@ -880,8 +1084,10 @@ while not Flag_sortie :
                 fcc[fcc<0]=0
                 frame_continuum=np.array(fcc, dtype='uint16')
                 # display image
+                frame_continuum=cv2.flip(frame_continuum,0)
                 cv2.imshow('continuum',frame_continuum)
                 # sauvegarde en png de continuum
+                
                 cv2.imwrite(basefich+'_dp'+str(range_dec[len(range_dec)-1])+'_cont.png',frame_continuum)
             
             top_w=top_w+tw
@@ -895,7 +1101,7 @@ while not Flag_sortie :
                 #on se tente une image couleur...
                 flag_erreur_doppler=False
                 try :
-                    img_doppler=np.zeros([ih, frames[1].shape[1], 3],dtype='uint16')
+                    img_doppler=np.zeros([frames[1].shape[0], frames[1].shape[1], 3],dtype='uint16')
                     if Flags["VOL"] :
                         moy=np.array(((frames[1]+frames[len(frames)-1])/2), dtype='uint16')
                     else:
@@ -908,6 +1114,7 @@ while not Flag_sortie :
                     img_doppler[:,:,0] = i1
                     img_doppler[:,:,1] = i2
                     img_doppler[:,:,2] = i3
+                    img_doppler=cv2.flip(img_doppler,0)
                     cv2.imshow('doppler',img_doppler)
                
                 except:
@@ -949,6 +1156,7 @@ while not Flag_sortie :
                     Seuil_haut=np.percentile(img_weak_array,99.95)
                     img_weak=seuil_image_force(img_weak_uint, Seuil_haut, Seuil_bas)
                     img_weak=np.array(img_weak, dtype='uint16')
+                    img_weak=cv2.flip(img_weak,0)
                     cv2.imshow('doppler',img_weak)
                     cv2.setWindowTitle("doppler", "free line")
                     img_weak_array=d
@@ -976,17 +1184,19 @@ while not Flag_sortie :
         cv2.imwrite(basefich+img_suffix+'_raw.png',Disk2)
         #sauvegarde en png disk quasi seuils max
         cv2.imwrite(basefich+img_suffix+'_disk.png',frame_contrasted)
+        cv2.imwrite(base_filename+'.jpg',frame_contrasted*0.0038)
         #sauvegarde en png seuils serrés
         cv2.imwrite(basefich+img_suffix+'_diskHC.png',frame_contrasted2)
         #sauvegarde en png seuils protus
         cv2.imwrite(basefich+img_suffix+'_protus.png',frame_contrasted3)
+        cv2.imwrite(base_filename+'_protus.jpg',frame_contrasted3*0.0038)
         #sauvegarde en png de clahe
         cv2.imwrite(basefich+img_suffix+'_clahe.png',cc)
             
         
         # sauve les png multispectraux et cree une video
        
-        if Flags["VOL"] or Flags["POL"] :
+        if (Flags["VOL"] or Flags["POL"]) and len(range_dec)!=1:
             
             k=1
             
@@ -1039,6 +1249,7 @@ while not Flag_sortie :
                 fdec[fdec<0]=0
                 frame_dec=np.array(fdec, dtype='uint16')
                 cv2.waitKey(300)
+                frame_dec=cv2.flip(frame_dec,0)
                 cv2.imshow('doppler',frame_dec)
                 
                 if range_dec[i]+range_dec[i-1]==0 :
@@ -1063,6 +1274,7 @@ while not Flag_sortie :
                     f0[f0<0]=0             
                     frame_0=np.array(f0, dtype='uint16')
                     cv2.waitKey(500)
+                    frame_0=cv2.flip(frame_0,0)
                     cv2.imshow('doppler',frame_0)
                     cv2.imwrite(basefich+'_dp'+str(k)+'.png',frame_0)
                     k=k+1
@@ -1133,9 +1345,11 @@ while not Flag_sortie :
             DiskHDU.writeto(basefich+'_moy.fits', overwrite='True')
             
         else:
+            """
             frame2=np.array(cl1, dtype='uint16')
             DiskHDU=fits.PrimaryHDU(frame2,header)
             DiskHDU.writeto(basefich+'_clahe.fits', overwrite='True')
+            """
         
         if Flags['POL']:
             # renomme les dp fits en r et b

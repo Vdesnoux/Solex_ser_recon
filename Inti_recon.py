@@ -6,6 +6,30 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+
+version du 29 jan 2023 - Antibes
+- reduit bande auto si rotation en fontion de l'angle de rotation
+- ajoute passage de solar_dict pour sauvegarde dans entete si non vide
+- WAVELENGTH en longueur d'onde
+- elimine premieres et derniers colonnes pour calcul lignes défectueuses
+
+version du 22 jan 2023 - paris
+- ajout des mots clefs base BASS2000 
+    CENTER_X, CENTER_Y (ou CRPIX1, CRPIX2)
+    SOLAR_R => rayon du Soleil en pixels
+
+- mot clef wavelnth doit avoir un nombre
+
+version du 26 dec 2022 - paris
+- ajout fonction de rotation sur image finale
+- ajout mots clefs entete JM.Malherbe
+    hdr['CONTACT']=data_entete[4]
+    hdr['WAVELNTH']=data_entete[5]
+    hdr['PHYSPARA']= 'Intensity'
+    hdr['WAVEUNIT']= -10
+    hdr['FILENAME']=filename_wave_20180620_122805.fits
+-inverse sens angle tilt correction avec flip
+
 Version du 17 sept 2022 - paris
 - ajout data_entete dans fichiers fits
  hdr['DATE-OBS']
@@ -142,7 +166,7 @@ global LG # Langue de l'interfacer (1 = FR ou 2 = US)
 LG = 2
 # -------------------------------------------------------------
 
-def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
+def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_P, solar_dict):
     """
     ----------------------------------------------------------------------------
     Reconstuit l'image du disque a partir de l'image moyenne des trames et 
@@ -174,6 +198,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
     flag_pol=Flags['POL']
     flag_volume=Flags["VOL"]
     flag_weak=Flags["WEAK"]
+    flag_flipRA=Flags["FLIPRA"]
+    flag_flipNS=Flags["FLIPNS"]
     
     geom=[]
 
@@ -249,6 +275,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
         f_dateSerUTC=datetime.fromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
         logme('SER date UTC :' + f_dateSerUTC.strftime('"%Y-%m-%dT%H:%M:%S.%f7%z"'))
         fits_dateobs=f_dateSerUTC.strftime('%Y-%m-%dT%H:%M:%S.%f7%z')
+
     except:
         pass
     
@@ -284,6 +311,12 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
     hdr['SITELONG']=data_entete[2] #Longitude of the telescope in decimal degrees, could East as positive
     hdr['SITELAT']=data_entete[3]  #Latitude of the telescope in decimal degrees 
     hdr['OBJNAME']='Sun'
+    hdr['CONTACT']=data_entete[4]
+    hdr['WAVELNTH']=data_entete[5]
+    hdr['PHYSPARA']= 'Intensity'
+    hdr['WAVEUNIT']= -10
+    filename_suffixe=data_entete[1]+'_'+ data_entete[6]+'_'+fits_dateobs.split('T')[0].replace('-','')+'_'+fits_dateobs.split('T')[1].split('.')[0].replace(':','')
+    
     
     
     #debug
@@ -461,20 +494,34 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
         shift_min=range_dec[1]
 
         if ((posX_min_slit-shift_max)<=1) or ((posX_max_slit+shift_max)>=iw):
+            v=min(posX_min_slit-2, iw-posX_max_slit-1)
+            logme('*******************************')
             if LG == 1:
-                logme ('Valeur de décalage trop importante, calcul sans décalage.')
+                logme ('Warning !! Valeur de décalage trop importante')
+                logme ('Valeur de décalage maximum:'+str(v))
+                logme ('Image au centre la raie sera calculée à la place')
             else:
-                logme ('Shift value too large, no shift computing.')
+                logme ('Warning!! Shift value too large')
+                logme ('Maximum shift value :'+str(v))
+                logme ('Image at line center will be computed instead')
+            logme('*******************************')
             range_dec=[0]
             kend=len(range_dec)
             
     else:
         shift_max=range_dec[0]
         if ((posX_min_slit-shift_max)<=1) or ((posX_max_slit+shift_max)>=iw):
+            v=min(posX_min_slit-2, iw-posX_max_slit-1)
+            logme('*******************************')
             if LG == 1:
-                logme ('Valeur de décalage trop importante, calcul sans décalage.')
+                logme ('Warning !! Valeur de décalage trop importante')
+                logme ('Valeur de décalage maximum:'+str(v))
+                logme ('Image au centre la raie sera calculée à la place')
             else:
-                logme ('Shift value too large, no shift computing.')
+                logme ('Warning!! Shift value too large')
+                logme ('Maximum shift value :'+str(v))
+                logme ('Image at line center will be computed instead')
+            logme('*******************************')
             range_dec=[0]
             kend=len(range_dec)
             
@@ -680,14 +727,22 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
         # creation du tableau d'indice des lignes a corriger
         l_col=np.where(hcol!=0)
         listcol=l_col[0]
+        #print(listcol)
         
         origimg=np.copy(img) # as suggested by Matt considine 
         
         # correction de lignes par filtrage median 13 lignes, empririque
         for c in listcol:
-            m=origimg[c-7:c+6,] #now refer to original image 
-            s=np.median(m,0)
-            img[c-1:c,]=s
+            m=origimg[c-7:c+6,] #now refer to original image
+            #on prepare un patch de 2 valeurs 
+            a=[m[0][3],m[0][-3]]
+            #suppression de 2 colonnes en debut et fin qui peuvent être à zéro
+            #pour calculer la mediane
+            s=np.median(m[:,2:-2],0)
+            #on ajoute les patchs
+            s=np.concatenate((a,s,a))
+            #on remplace la ligne defectueuse
+            img[c:c+1,]=s #fix bug ecart une ligne
     
 
         
@@ -697,6 +752,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
         --------------------------------------------------------------
         """
         frame=np.copy(img)
+        #plt.imshow(frame)
+        #plt.show()
         
         debug=False
         
@@ -907,8 +964,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
             #on force l'angle de tilt pour les prochaines images
             ang_tilt=AlphaDeg
             
-            # Test si correction de tilt si angle supérieur a 0.3 degres
-            if abs(AlphaDeg)> 0.2 :
+            # Test si correction de tilt si angle supérieur a 0.2 degres
+            if abs(AlphaDeg)> 0.0 :
                 #decale lignes images par rapport au centre
                 colref=round((el_x1+el_x2)/2)
                 #dymax=int(abs(TanAlpha)*((el_x2-el_x1)/2)) modif du 27 aout 22
@@ -1027,20 +1084,118 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
                 yc=round(EllipseFit[0][1])
                 wi=round(EllipseFit[1]) # diametre
                 he=round(EllipseFit[2])
-                cercle=[xc,yc,wi,he]
+                
+                if ratio_fixe==0 :
+                    cercle=[xc,yc,wi,he]
+        
+                
                 r=round(min(wi-5,he-5)-4)
                 if LG == 1:
                     logme('Final SY/SX :'+ "{:+.3f}".format(he/wi))
-                    logme('Centre xc,yc et rayon : '+str(xc)+' '+str(yc)+' '+str(int(r)))
+                    #logme('Centre xc,yc et rayon : '+str(xc)+' '+str(yc)+' '+str(int(r)))
                 else:
                     logme('Final SY/SX :'+ "{:+.3f}".format(he/wi))
-                    logme('xc,yc center and radius : '+str(xc)+' '+str(yc)+' '+str(int(r)))
+                    #logme('xc,yc center and radius : '+str(xc)+' '+str(yc)+' '+str(int(r)))
     
         if k==0:
            cercle0=cercle
            geom.append(ratio_fixe_d1)
            geom.append(ang_tilt)
            
+           x0=cercle[0]
+           y0=cercle[1]
+           wi=round(cercle[2])
+           he=round(cercle[3])
+           
+           print(x0,y0,wi,he)
+           sensNS_corr_ang_tilt=1
+           sensEW_corr_ang_tilt=1
+                
+        # retourne horizontalement image si flag de flip est vrai
+        if flag_flipRA:
+            frame=np.flip(frame, axis=1)
+            # il faut recentrer le centre du disque en X...
+            x0=frame.shape[1]-x0
+            cercle[0]=x0
+            cercle0[0]=x0
+            sensEW_corr_ang_tilt=-1
+            if LG == 1:
+                logme("Inversion EW")
+            else:
+                logme("EW inversion")
+        
+        if flag_flipNS:
+            frame=np.flip(frame, axis=0)
+            # il faut recentrer le centre du disque en Y...
+            y0=frame.shape[0]-y0
+            cercle[1]=y0
+            cercle0[1]=y0
+            sensNS_corr_ang_tilt=-1
+            if LG == 1:
+                logme("Inversion NS")
+            else:
+                logme("NS inversion")
+          
+        """
+        -----------------------------------------------------------------------
+        Correction rotation angle P et tilt
+        -----------------------------------------------------------------------
+        """
+        # corrige angle P de rotation, par defaut il sera égal à zero
+        # pour l'instant on applique la valeur dans le champs Angle P
+        # TODO: a voir si on doit rendre la valeur negative avec les inversions EW et NS
+        # on corrige aussi de l'angle de tilt dans geom[1]
+        
+        angle_rot = ang_P+sensNS_corr_ang_tilt*sensEW_corr_ang_tilt*geom[1] 
+        
+        if LG == 1:
+            logme("Angle de correction : "+ str(angle_rot))
+            logme("Angle P utilisé : "+str(ang_P))
+        else:
+            logme("Correction angle : "+ str(angle_rot))
+            logme("P angle used : "+str(ang_P))
+        
+        # on copie l'image de travail et on recupere hauteur et largeur
+        fr_avant_rot=np.copy(frame)
+        hh,ww=fr_avant_rot.shape[:2]
+        
+        #calcul de bande max liée a la rotation d'angle
+        RotRad=math.radians(angle_rot)
+        TanRot=np.tan(RotRad)
+        hy=int(abs(TanRot*ww*0.5))
+        
+
+        # y0 inferieur à hauteur on padde des bandes haut et bas pour ne pas cropper apres rotation
+        if y0<he :
+            print('hauteur bande auto : ', hy)
+            #print('hauteur fixe : ', abs(he+hy-y0))
+            #hy=50
+            """
+            pad_area= np.ones((abs(he+hy-y0),ww))
+            fr_avant_rot=np.concatenate((pad_area,fr_avant_rot,pad_area))
+            cercle[1]=he+hy
+            cercle0[1]=he+hy
+            """
+            pad_area= np.ones((hy,ww))
+            fr_avant_rot=np.concatenate((pad_area,fr_avant_rot,pad_area))
+            cercle[1]=y0+hy
+            cercle0[1]=y0+hy
+            
+        
+        # et on met a jour dimensions de l'image avant rotation
+        h,w=fr_avant_rot.shape[:2]
+        # calcul de la matrice de rotation, angle en degre
+        rotation_mat=cv2.getRotationMatrix2D((cercle[0],cercle[1]),angle_rot,1.0)
+        # application de la matrice de rotation
+        fr_rot=cv2.warpAffine(fr_avant_rot,rotation_mat,(w,h),flags=cv2.INTER_LINEAR)
+        frame=np.array(fr_rot, dtype='uint16')
+        
+        if LG == 1:
+            logme('Centre xc,yc et rayon : '+str(cercle0[0])+' '+str(cercle0[1])+' '+str(int(r)))
+        else:
+            logme('xc,yc center and radius : '+str(cercle0[0])+' '+str(cercle0[1])+' '+str(int(r)))
+        
+        
         # Sauvegarde en fits de l'image finale
         frame=np.array(frame, dtype='uint16')
         hdr['NAXIS1']=newiw
@@ -1048,11 +1203,29 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete):
         hdr['INTI_XC'] = cercle0[0]
         hdr['INTI_YC'] = cercle0[1]
         hdr['INTI_R'] = cercle0[2]
+        # duplication keywords pour BASS2000
+        hdr['CENTER_X'] = cercle0[0]
+        hdr['CENTER_Y'] = cercle0[1]
+        hdr['SOLAR_R'] = cercle0[2]
+        
         hdr['INTI_Y1'] = y1_img
         hdr['INTI_Y2'] = y2_img
+        hdr['FILENAME']= basefich+img_suff[k]+'_'+filename_suffixe+".fits"
+        
+        try :
+            print('solar data : ', solar_dict)
+            hdr['SEP_LAT']=float(solar_dict['B0'])
+            hdr['SEP_LON']=float(solar_dict['L0'])
+            hdr['SOLAR_P']=float(ang_P)
+            hdr['CAR_ROT']=float(solar_dict['Carr'])
+        except:
+            pass
+        
+        
     
         DiskHDU=fits.PrimaryHDU(frame,header=hdr)
         DiskHDU.writeto(basefich+img_suff[k]+'_recon.fits', overwrite='True')
+        DiskHDU.writeto(hdr['FILENAME'], overwrite='True')
      
         with  open(basefich+'_log.txt', "w") as logfile:
             logfile.writelines(mylog)

@@ -10,12 +10,21 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 #import time
 import sys
-from scipy.ndimage import gaussian_filter1d
+from scipy.ndimage import gaussian_filter1d, rotate
 import ellipse as el
 from matplotlib.patches import Ellipse
 import cv2 as cv2
 
+#import imutils
+
 """
+version du 29 janvier 23 Antibes
+- correction cercle dimensions si ratio fixe
+- ajout ligne zero en debut et fin pour meilleure detection bords
+
+version du 24 dec 22
+- fonction de rotation image > non
+
 version du xx 
 - introduit le clamp des zones brillantes aussi dans fit_ellipse
 
@@ -38,6 +47,8 @@ Version du 19 aout 2021
 
 mylog=[]
 
+
+
 #from matt considine
 def SER_time_seconds(h):
     # removed last part to avoid removing 4 hours to the UTC time
@@ -56,11 +67,13 @@ def detect_bord (img, axis, offset):
     #axis donne la direction de detection des bords si 1 vertical, ou 0 horiz
     #offset: decalage la coordonnée pour prendre en compte le lissage gaussien
     
-
+    
     # pretraite l'image pour eliminer les zone trop blanche
     img_mean=1.3*np.mean(img) #facteur 1.3 pour eviter des artefacts de bords
     img_c=np.copy(img)
     img_c[img_c>img_mean]=img_mean
+    img_c[0,:]=0 # pour meilleure detection bord pour soleil partiel
+    img_c[-1,:]=0
     
     # on part de cette image pour la detection haut bas
     ih=img.shape[0]
@@ -69,10 +82,10 @@ def detect_bord (img, axis, offset):
     if axis==1:
         # Determination des limites de la projection du soleil sur l'axe Y
         #ymean=np.mean(img[10:,:-10],1)
-        if 2==1:  #MattC thresh == True
+        if 2==1:  #MattC... ne marche pas pour image moyenne
             timg=np.array((((img-np.min(img))/(np.max(img)-np.min(img)))*255), dtype='uint8')
             timg2 = cv2.threshold(timg, 25, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-            ymean=np.mean(timg2[1],1)
+            img_c=timg2[1]
         
 
         ymean=np.mean(img_c,1) #MattC
@@ -84,22 +97,27 @@ def detect_bord (img, axis, offset):
             plt.show()
         ymean=gaussian_filter1d(ymean, 11)
         yth=np.gradient(ymean)
+
         y1=yth.argmax()-offset
         y2=yth.argmin()+offset
+
         if y1<=11:
             y1=0
         if y2>ih-11:
             y2=ih-1
+
         a1=y1
         a2=y2
         if debug:
             plt.plot(yth)
             plt.title('Gradient Profil Y - filtre gaussien')
             plt.show()
+            print("Position Y des limbes y1, y2 :",a1,a2)
     else:
         # Determination des limites de la projection du soleil sur l'axe X
         # Elimine artefact de bords
-        xmean=np.mean(img_c[10:,:-10],0)
+
+        xmean=np.mean(img_c[10:-10,1:],0) #evite si premiere trame du fichier ser est à zero
         if debug:
             plt.title('Profil X ')
             plt.plot(xmean)
@@ -109,18 +127,20 @@ def detect_bord (img, axis, offset):
         xmean[xmean>bb]=bb
         xmean=gaussian_filter1d(xmean, 11)
         xth=np.gradient(xmean)
-        if debug:
-            plt.plot(xth)
-            plt.title('Gradient Profil X - filtre gaussien ')
-            plt.show()
-        x1=xth.argmax()-offset
-        x2=xth.argmin()+offset
+        
+        x1=xth.argmax()-offset+1 # prend en compte decalage de 1 du tableau moyenne
+        x2=xth.argmin()+offset+1 # prend en compte decalage de 1 du tableau moyenne
         #test si pas de bord en x
         if x1<=11 or x2>iw:
             x1=0
             x2=iw
         a1=x1
         a2=x2
+        if debug:
+            plt.plot(xth)
+            plt.title('Gradient Profil X - filtre gaussien ')
+            plt.show()
+            print("Position X des limbes x1, x2 :",a1,a2)
         
     return (a1,a2)
 
@@ -225,11 +245,12 @@ def circularise (img,iw,ih,ratio_fixe,*args): #methode des limbes
             ratio=diam_cercle/(x2-x1)
         else:
             ratio=ratio_fixe
+            diam_cercle=int(abs(x2-x1)*ratio*0.5)
             
         # paramètre du cercle
         x0= int((x1+((x2-x1)*0.5))*ratio)
         y0=y_x1
-        cercle=[x0,y0, diam_cercle]
+        cercle=[x0,y0, diam_cercle, diam_cercle]
         #logme('Centre cercle x0,y0 et diamètreY, diamètreX :'+str(x0)+' '+str(y0)+' '+str(diam_cercle)+' '+str((x2-x1)))
         
     #logme('Ratio SY/SX :'+"{:.3f}".format(ratio))
@@ -288,6 +309,9 @@ def detect_noXlimbs (myimg):
 def detect_edge (myimg,zexcl, crop, disp_log):
     edgeX=[]
     edgeY=[]
+    bord_droit=[]
+    bord_gauche=[]
+    #zexcl=0.01
     
     debug=False
     
@@ -299,12 +323,10 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     #detect si pas de limbes droits et/ou gauche
     
     y1,y2=detect_bord (myimg_crop, axis=1,offset=5)    # bords verticaux
+    #x1,x2= detect_bord(myimg_crop,axis=0, offset=0)
     y1=y1+crop
     y2=y2+crop
     
-    #print('detect edge y1,y2', y1, y2)
-    
-    #mid=int((y2-y1)/2)+y1
 
     zone_fit=abs(y2-y1)
     ze=int(zexcl*zone_fit)
@@ -313,90 +335,130 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     img_mean=1.3*np.mean(myimg) #facteur 1.3 pour eviter des artefacts de bords
     img_c=np.copy(myimg)
     img_c[img_c>img_mean]=img_mean
+    #img_c=cv2.blur(img_c,(5,5))
+    if debug :
+        plt.imshow(img_c)
+        plt.show()
     k=0
-
+    s=[]
 
     for i in range(y1+ze,y2-ze):
         li=np.copy(img_c[i,:-5])
+        myli=np.copy(img_c[i,:-5])
         
         
         #method detect_bord same as flat median
         offset=0
         b=np.percentile(li,97)
         bb=b*0.7 #was 0.5
+        #bb=b
         #print("seuil edge : ", b," ",bb)
 
         li[li>bb]=bb
+        #li[li<4000]=30
         li_filter=gaussian_filter1d(li, 11)
         li_gr=np.gradient(li_filter)
         
         
-        if debug==True:
-            if i in range(y1+ze+1, y1+ze+3):
-                plt.plot(li)
-                plt.title('Profil ligne - filtre gaussien '+str(i))
+        x1=li_gr.argmax()
+        x2=li_gr.argmin()
+        
+        if debug :
+            if i in range(576, 577) or i in range (498,499):
+            #if x1 <2500 :
+                b97=np.percentile(li,97)
+                print(b97)
+                plt.plot(myli)
+                plt.title('Profil ligne - sans seuils ni filtre gaussien '+str(i))
                 plt.show()
                 plt.plot(li_gr)
                 plt.title('Gradient Profil ligne '+str(i))
                 plt.show()
-           
-        x1=li_gr.argmax()
-        x2=li_gr.argmin()
-        x_argsort=li_gr.argsort()
-
-        s=np.array([x1,x2])
         
-        if s.size !=0:
-            c_x1=s[0]+offset
-            c_x2=s[-1]-offset
-            edgeX.append(c_x1)
-            edgeY.append(i)
-            edgeX.append(c_x2)
-            edgeY.append(i)
-            k=k+1
-    if debug:
-        ex=np.copy(edgeX)
+        
+        #x_argsort=li_gr.argsort()
+        if x1==0 or x2==0 :
+            pass
+        else:
+            s=np.array([x1,x2])
+            
+            if s.size !=0:
+                c_x1=s[0]+offset
+                c_x2=s[-1]-offset
+                #if i not in range(500,700):
+                edgeX.append(c_x1)
+                bord_gauche.append([i,c_x1])
+                edgeY.append(i)
+                edgeX.append(c_x2)
+                bord_droit.append([i,c_x2])
+                edgeY.append(i)
+                k=k+1
+
+    if 2==1:
+        ex=np.copy(bord_droit)
         gr_ex=np.gradient(ex)
-        plt.plot(ex)
-        plt.show()
+        #plt.plot(ex)
+        #plt.show()
         plt.plot(gr_ex)
         plt.show()
-    X = np.array(list(zip(edgeX, edgeY)))   
+        
+    #X=np.array(bord_gauche+bord_droit)
+    X = np.array(list(zip(edgeX, edgeY)), dtype='float')  
+    
 
     return X
 
 def fit_ellipse (myimg,X,disp_log):
+    """
+    @software{ben_hammel_2020_3723294,
+    author       = {Ben Hammel and Nick Sullivan-Molina},
+    title        = {bdhammel/least-squares-ellipse-fitting: v2.0.0},
+    month        = mar,
+    year         = 2020,
+    publisher    = {Zenodo},
+    version      = {v2.0.0},
+    doi          = {10.5281/zenodo.3723294},
+    url          = {https://doi.org/10.5281/zenodo.3723294}
+    }
+    """
     
     debug_graphics=False
-    #disp_log=True
+    disp_log=False
         
     EllipseFit=[]
     reg = el.LsqEllipse().fit(X)
     center, width, height, phi = reg.as_parameters()
     EllipseFit=[center,width,height,phi]
+    #EllipseFit=[center,height,width,phi]
     #section=((baryY-center[1])/center[1])
     XE=reg.return_fit(n_points=2000)
     
     
-    if disp_log or debug_graphics:
+    if disp_log :
         print("Paramètres ellipse ............")
         print(f'center: {center[0]:.3f}, {center[1]:.3f}')
-        print(f'width: {width*2:.3f}')
-        print(f'height: {height*2:.3f}')
-        print(f'phi: {np.rad2deg(phi):.3f}')
+        print(f'width: {width:.3f}')
+        print(f'height: {height:.3f}')
+        print(f'phi_rad: {phi:.3f}')
+        #print(f'phi: {np.rad2deg(phi):.3f}')
 
     if debug_graphics:
         plt.imshow(myimg)
-        # plot ellipse in blue
-        ellipse = Ellipse(
-            xy=center, width=2*width, height=2*height, angle=np.rad2deg(phi),
-            edgecolor='b', fc='None', lw=1, label='Fit', zorder=2)
         # plot edges on image as red dots
         np_m=np.asarray(X)
         xm,ym=np_m.T
         plt.scatter(xm,ym,s=0.1, marker='.', edgecolors=('red'))
-        ax=plt.gca()
-        ax.add_patch(ellipse)
+        # plot ellipse in blue
+        try:
+            ellipse = Ellipse(
+                xy=center, width=2*width, height=2*height, angle=np.rad2deg(phi),
+                edgecolor='b', fc='None', lw=1, label='Fit', zorder=2)
+    
+            ax=plt.gca()
+            ax.add_patch(ellipse)
+        except:
+            pass
+       
         plt.show()
 
 
