@@ -51,8 +51,8 @@ mylog=[]
 
 #from matt considine
 def SER_time_seconds(h):
-    # From Matt C + modified 4 > -2
-    timestamp_1970 = int(621355967998300000) - int(1e7*(-2*60*60-0.17))
+    # From Matt C + modified 4 > -2 > 0
+    timestamp_1970 = int(621355967998300000) - int(1e7*(0*60*60-0.17)) #aligned with compiled V4.0.2 version
     s=float(h-timestamp_1970)/1e7 # convert to seconds
     return s # number of seconds from 0001 to 1970
 
