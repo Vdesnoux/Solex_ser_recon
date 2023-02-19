@@ -6,6 +6,9 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+version du 18 fev 2023 - paris
+- correction bug timestamp heure pc de traitement en utc fichier ser
+
 
 version du 29 jan 2023 - Antibes
 - reduit bande auto si rotation en fontion de l'angle de rotation
@@ -252,9 +255,11 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
     FrameCount = scan.getLength()    #      return number of frame in SER file.
     Width = scan.getWidth()          #      return width of a frame
     Height = scan.getHeight()        #      return height of a frame
-    dateSerUTC = scan.getHeader()['DateTimeUTC']
+    dateSerUTC = scan.getHeader()['DateTimeUTC']  
     dateSer=scan.getHeader()['DateTime']
     bitdepth=scan.getHeader()['PixelDepthPerPlane']
+    #ser_header=scan._readExistingHeader()
+    #print(ser_header)
     if bitdepth==8:
         if LG == 1:
             logme('Acquisition non réalisée en 16 bits.')
@@ -271,10 +276,16 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
         logme ('Number of frames : '+str( FrameCount))
  
     try:
-        #logme ('ser date : '+str(dateSer))
-        f_dateSerUTC=datetime.fromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
+        # Date UTC
+        # Correction bug fromtimestamp convertie en prenant en compte heure locale PC
+        # Fonction utc ne tient pas compte du reglage pc
+        f_dateSerUTC=datetime.utcfromtimestamp(SER_time_seconds(dateSerUTC))
         logme('SER date UTC :' + f_dateSerUTC.strftime('"%Y-%m-%dT%H:%M:%S.%f7%z"'))
         fits_dateobs=f_dateSerUTC.strftime('%Y-%m-%dT%H:%M:%S.%f7%z')
+        # date ser du PC
+        f_dateSer=datetime.utcfromtimestamp(SER_time_seconds(dateSer))
+        logme('SER date local :' + f_dateSer.strftime('"%Y-%m-%dT%H:%M:%S.%f7%z"'))
+        
 
     except:
         pass
@@ -1107,7 +1118,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
            wi=round(cercle[2])
            he=round(cercle[3])
            
-           print(x0,y0,wi,he)
+           #print(x0,y0,wi,he)
            sensNS_corr_ang_tilt=1
            sensEW_corr_ang_tilt=1
                 
@@ -1167,7 +1178,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
 
         # y0 inferieur à hauteur on padde des bandes haut et bas pour ne pas cropper apres rotation
         if y0<he :
-            print('hauteur bande auto : ', hy)
+            #print('hauteur bande auto : ', hy)
             #print('hauteur fixe : ', abs(he+hy-y0))
             #hy=50
             """

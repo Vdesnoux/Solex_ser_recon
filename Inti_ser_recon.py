@@ -11,6 +11,12 @@ Front end de traitements spectro helio de fichier ser
 
 
 ----------------------------------------------------------------------------------------------------------------
+version du 18 fev 2023 - Paris
+- sauvegarde des inversions dans my_dictini
+- gere cas ou fichier ini n'a pas les mots clef inversion (evite plantage avec ancien fichier ini)
+- bug fix erreur longueur d'onde CaH/HeID3
+- ajustement taille ecran dynamique avec screen size
+
 version du 3 fev 2023 - Paris
 - ajout bouton pour avoir la date du fichier ser 
 - affiche date du fichier ser a la selection du fichier
@@ -127,7 +133,7 @@ from astropy.io import fits
 from Inti_functions import *
 import yaml
 # import shutil
-# import tkinter as tk
+import tkinter as tk
 import math
 import requests as rq
 import webbrowser as web
@@ -145,7 +151,7 @@ LG = 1
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V4.0.2 by V.Desnoux et.al. '
+current_version = 'Inti V4.0.3 by V.Desnoux et.al. '
 
 
 def get_sun_meudon (date_jd1):
@@ -228,19 +234,20 @@ def collapse(layout, key):
 
 
 
-def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, poly, pos_free_blue, pos_free_red,win_pos, previous_serfile, data_entete,saved_angP):
+def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, poly, pos_free_blue, 
+                  pos_free_red,win_pos, previous_serfile, data_entete,saved_angP,Flags):
 
     sg.theme('Dark2')
     sg.theme_button_color(('white', '#500000'))
     #print('ui :', os.path.join(WorkDir,previous_serfile))
     Shift=[]
-    Flags={}
+    #Flags={}
     Flags["DOPCONT"]=False
     Flags["VOL"]=False
     Flags["POL"]=False
     Flags["WEAK"]=False
     Racines=[]
-    list_wave=[['Manual','Ha','CaK3', 'CaK1v','HeID3', 'CaH'],[0,6562.762,3933.663,3932.163, 3968.469,5877.3]]
+    list_wave=[['Manual','Ha','CaK3', 'CaK1v','CaH', 'HeID3'],[0,6562.762,3933.663,3932.163, 3968.469,5877.3]]
 
     
     if LG == 1:
@@ -279,8 +286,8 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                      sg.Text('NSO', key='-NSO-',enable_events=True, font="None 9 italic underline")],
                 [sg.Text('Angle P :', size=(12,1)), sg.Input(default_text=saved_angP, size=(10,1),key='-ANGP-'), 
                  sg.Text("Nord en haut, Est à gauche, angle P positif vers l\'Est"), sg.Button('KSO',key='-KSO-')],
-                [sg.Checkbox(' Inversion E-W', default=False, key='-RA_FLIP-')],
-                [sg.Checkbox(' Inversion N-S', default=False, key='-NS_FLIP-')]
+                [sg.Checkbox(' Inversion E-W', default=Flags['FLIPRA'], key='-RA_FLIP-')],
+                [sg.Checkbox(' Inversion N-S', default=Flags['FLIPNS'], key='-NS_FLIP-')]
             
                 ]
     else:
@@ -506,7 +513,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                     try:
                         scan = Serfile(serfile, False)
                         #dateSerUTC = scan.getHeader()['DateTimeUTC']
-                        f_dateSerUTC=datetime.fromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
+                        f_dateSerUTC=datetime.utcfromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
                         fits_dateobs=f_dateSerUTC.strftime('%Y-%m-%dT%H:%M:%S.%f7%z')
                         window['-DATEOBS-'].update(fits_dateobs)
                     except:
@@ -656,7 +663,9 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     if centered_wave_label.isdigit():
         centered_wave=str(round(float(centered_wave)))
     
-    Data_entete=[values['-OBSERVER-'], values['-INSTRU-'], float(values['-SITE_LONG-']), float(values['-SITE_LAT-']), values['-CONTACT-'], centered_wave, centered_wave_label]
+    Data_entete=[values['-OBSERVER-'], values['-INSTRU-'], 
+                 float(values['-SITE_LONG-']), float(values['-SITE_LAT-']), values['-CONTACT-'], 
+                 centered_wave, centered_wave_label]
     ang_P=float(values['-ANGP-']) 
     
     if Flags["WEAK"] :
@@ -706,10 +715,18 @@ Program starts here !
 """
 Flag_sortie=False
 serfiles=[]
+Flags={}
 previous_serfile=''
 my_ini=os.getcwd()+'/inti.yaml'
 global mouse_x, mouse_y
 mouse_x,mouse_y=0,0
+
+# gestion dynamique de la taille ecran
+screen = tk.Tk()
+screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()
+screen.destroy()
+
+#print(screensize)
 
 while not Flag_sortie :
     
@@ -722,7 +739,7 @@ while not Flag_sortie :
                 'ang_tilt':0, 'ratio_sysx':0, 'poly_free_a':0,'poly_free_b':0,'poly_free_c':0,
                 'pos_free_blue':0, 'pos_free_red':0,
                 'win_posx':300, 'win_posy':200, 'observer':'', 'instru':'','site_long':0, 'site_lat':0,
-                'angle P':0,'contact':'','wavelength':0, 'wave_label':'Manuel'}
+                'angle P':0,'contact':'','wavelength':0, 'wave_label':'Manuel', 'inversion NS':0, 'inversion EW':0}
     #print('myini de depart:', my_ini)
     poly=[]
     
@@ -751,6 +768,13 @@ while not Flag_sortie :
     pos_free_red=int(my_dictini['pos_free_red'])
     w_posx=int(my_dictini['win_posx'])
     w_posy=int(my_dictini['win_posy'])
+    if 'inversion EW' in my_dictini:
+        Flags['FLIPRA']=my_dictini['inversion EW']
+        Flags['FLIPNS']=my_dictini['inversion NS']
+    else:
+        Flags['FLIPRA']=0
+        Flags['FLIPNS']=0
+        
     win_pos=(w_posx,w_posy)
     data_entete=[my_dictini['observer'], my_dictini['instru'],float(my_dictini['site_long']),float(my_dictini['site_lat']),my_dictini['contact'],
                  my_dictini['wavelength'],my_dictini['wave_label']]
@@ -760,7 +784,7 @@ while not Flag_sortie :
     #print('serfile previous : ', previous_serfile)
     serfiles, Shift, Flags, ratio_fixe,ang_tilt, poly, racines, data_entete,ang_P,solar_dict= UI_SerBrowse(WorkDir, saved_tilt, saved_ratio,
                                                                              dec_pix_dop, dec_pix_cont, poly,pos_free_blue, pos_free_red,
-                                                                             win_pos, previous_serfile, data_entete,saved_angP)
+                                                                             win_pos, previous_serfile, data_entete,saved_angP, Flags)
     serfiles=serfiles.split(';')
     #print('serfile : ',  len(serfiles))
     if len(serfiles)==1 :
@@ -823,6 +847,8 @@ while not Flag_sortie :
         my_dictini['contact']=data_entete[4]
         my_dictini['wavelength']=data_entete[5]
         my_dictini['wave_label']=data_entete[6]
+        my_dictini['inversion EW']=Flags['FLIPRA']
+        my_dictini['inversion NS']=Flags['FLIPNS']
         
         if Flags['WEAK']:
            my_dictini['pos_free_blue']=round(poly[2]+Shift[1])
@@ -866,16 +892,20 @@ while not Flag_sortie :
     
         ih = frames[0].shape[0]
         newiw = frames[0].shape[1]
-    
-        top_w=0
-        left_w=0
-        tw=150
-        lw=34
         
         # my screensize is 1536x864 - harcoded as tk.TK() produces an error in spyder
         # plus petit for speed up
-        screensizeH = (864-50) - (3*lw) 
-        screensizeW = (1536)-(3*tw)
+        myscreen_sw, myscreen_sh=screensize
+    
+        top_w=0
+        left_w=0
+        #tw=150
+        tw=int(myscreen_sw/10)
+        lw=34
+        
+
+        screensizeH = (myscreen_sh-50) - (3*lw) 
+        screensizeW = (myscreen_sw)-(3*tw)
         
         # gere reduction image png
         nw = screensizeW/newiw
