@@ -11,6 +11,9 @@ Front end de traitements spectro helio de fichier ser
 
 
 ----------------------------------------------------------------------------------------------------------------
+version du 21 fev 2023 - Paris V4.0.3bis
+- oubli de mettre a jour en anglais la valeur par defaut des inversions
+
 version du 18 fev 2023 - Paris
 - sauvegarde des inversions dans my_dictini
 - gere cas ou fichier ini n'a pas les mots clef inversion (evite plantage avec ancien fichier ini)
@@ -146,12 +149,12 @@ import PySimpleGUI as sg
 
 # -------------------------------------------------------------
 global LG # Langue de l'interfacer (1 = FR ou 2 = US)
-LG = 1
+LG = 2
 # -------------------------------------------------------------
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V4.0.3 by V.Desnoux et.al. '
+current_version = 'Inti V4.0.3b by V.Desnoux et.al. '
 
 
 def get_sun_meudon (date_jd1):
@@ -306,8 +309,8 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                      sg.Text('NSO', key='-NSO-',enable_events=True, font="None 9 italic underline")],
                 [sg.Text('P Angle :', size=(12,1)), sg.Input(default_text=saved_angP, size=(10,1),key='-ANGP-'), 
                  sg.Text("North up, Est left, P angle positive towards Est"), sg.Button('KSO',key='-KSO-')],
-                [sg.Checkbox(' E-W flip', default=False, key='-RA_FLIP-')],
-                [sg.Checkbox(' N-S flip', default=False, key='-NS_FLIP-')]
+                [sg.Checkbox(' E-W flip', default=Flags['FLIPRA'], key='-RA_FLIP-')],
+                [sg.Checkbox(' N-S flip', default=Flags['FLIPNS'], key='-NS_FLIP-')]
                 
                 
                 ]
