@@ -6,6 +6,13 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+version du 19 mars 2023 - paris
+- autorise inversions et rotations sur toutes les images
+- decale de 1 pixel le centre du disque en inversion NS
+
+version du 12 mars 2023 - paris
+- ne prends plus en compte les inversions si plus d'une image traitée
+
 version du 18 fev 2023 - paris
 - correction bug timestamp heure pc de traitement en utc fichier ser
 
@@ -1109,43 +1116,44 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
                     #logme('xc,yc center and radius : '+str(xc)+' '+str(yc)+' '+str(int(r)))
     
         if k==0:
-           cercle0=cercle
-           geom.append(ratio_fixe_d1)
-           geom.append(ang_tilt)
-           
-           x0=cercle[0]
-           y0=cercle[1]
-           wi=round(cercle[2])
-           he=round(cercle[3])
-           
-           #print(x0,y0,wi,he)
-           sensNS_corr_ang_tilt=1
-           sensEW_corr_ang_tilt=1
-                
+            cercle0=cercle
+            geom.append(ratio_fixe_d1)
+            geom.append(ang_tilt)
+
+            
+        x0=cercle[0]
+        y0=cercle[1]
+        wi=round(cercle[2])
+        he=round(cercle[3])
+        
+        
+        sensNS_corr_ang_tilt=1
+        sensEW_corr_ang_tilt=1
+             
         # retourne horizontalement image si flag de flip est vrai
         if flag_flipRA:
-            frame=np.flip(frame, axis=1)
-            # il faut recentrer le centre du disque en X...
-            x0=frame.shape[1]-x0
-            cercle[0]=x0
-            cercle0[0]=x0
-            sensEW_corr_ang_tilt=-1
-            if LG == 1:
-                logme("Inversion EW")
-            else:
-                logme("EW inversion")
-        
+             frame=np.flip(frame, axis=1)
+             # il faut recentrer le centre du disque en X...
+             x0=frame.shape[1]-x0
+             cercle[0]=x0
+             if k==0 : cercle0[0]=x0
+             sensEW_corr_ang_tilt=-1
+             if LG == 1:
+                 logme("Inversion EW")
+             else:
+                 logme("EW inversion")
+         
         if flag_flipNS:
-            frame=np.flip(frame, axis=0)
-            # il faut recentrer le centre du disque en Y...
-            y0=frame.shape[0]-y0
-            cercle[1]=y0
-            cercle0[1]=y0
-            sensNS_corr_ang_tilt=-1
-            if LG == 1:
-                logme("Inversion NS")
-            else:
-                logme("NS inversion")
+             frame=np.flip(frame, axis=0)
+             # il faut recentrer le centre du disque en Y...
+             y0=frame.shape[0]-y0-1
+             cercle[1]=y0
+             if k==0: cercle0[1]=y0
+             sensNS_corr_ang_tilt=-1
+             if LG == 1:
+                 logme("Inversion NS")
+             else:
+                 logme("NS inversion")
           
         """
         -----------------------------------------------------------------------
@@ -1154,7 +1162,6 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
         """
         # corrige angle P de rotation, par defaut il sera égal à zero
         # pour l'instant on applique la valeur dans le champs Angle P
-        # TODO: a voir si on doit rendre la valeur negative avec les inversions EW et NS
         # on corrige aussi de l'angle de tilt dans geom[1]
         
         angle_rot = ang_P+sensNS_corr_ang_tilt*sensEW_corr_ang_tilt*geom[1] 
@@ -1190,7 +1197,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
             pad_area= np.ones((hy,ww))
             fr_avant_rot=np.concatenate((pad_area,fr_avant_rot,pad_area))
             cercle[1]=y0+hy
-            cercle0[1]=y0+hy
+            if k==0: cercle0[1]=y0+hy
+            
             
         
         # et on met a jour dimensions de l'image avant rotation
@@ -1222,7 +1230,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
         hdr['INTI_Y1'] = y1_img
         hdr['INTI_Y2'] = y2_img
         hdr['FILENAME']= basefich+img_suff[k]+'_'+filename_suffixe+".fits"
-        
+
         try :
             print('solar data : ', solar_dict)
             hdr['SEP_LAT']=float(solar_dict['B0'])

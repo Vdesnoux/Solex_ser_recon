@@ -11,6 +11,16 @@ Front end de traitements spectro helio de fichier ser
 
 
 ----------------------------------------------------------------------------------------------------------------
+version du 22 mars 2023 - paris
+- bug base_filename fi si dpx
+- ajout creation fits3D avec checkbox dans sequence doppler
+- typo N et E dans labels GUI
+
+version du 12 mars 2023 - paris
+- gestion des seuils avec sliders
+- force fenetres zoom et sliders en premier
+
+
 version du 21 fev 2023 - Paris V4.0.3bis
 - oubli de mettre a jour en anglais la valeur par defaut des inversions
 
@@ -154,8 +164,47 @@ LG = 2
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V4.0.3b by V.Desnoux et.al. '
+current_version = 'Inti V4.0.4 by V.Desnoux et.al. '
 
+def on_change_slider(x):
+    # x est la valeur du curseur
+    global source_window
+    global img_data
+        
+    #print(params[0])
+    sb = cv2.getTrackbarPos('Seuil bas', 'sliders')
+    sh = cv2.getTrackbarPos('Seuil haut', 'sliders')
+    s_bas=int(sb*65535/255)
+    s_haut=int(sh*65535/255)
+    #print('non inv : ',s_haut, s_bas)
+    diff=s_haut-s_bas
+    if diff==0:
+        diff=65535
+    
+        
+    f1=np.copy(img_data)
+    if diff<0 :
+        f1=np.copy(img_data)   
+        f1=65535-f1
+        s_bas=65535-s_bas
+        s_haut=65535-s_haut
+
+    f1=np.copy(img_data)
+    f1[f1>s_haut]=s_haut
+    f1[f1<s_bas]=s_bas
+    f=(f1-s_bas)* (65535/abs(diff))
+    f[f<0]=0
+        
+
+    cc=np.array(f, dtype='uint16')
+    param=np.copy(cc)
+    param2=f1
+    paramh=s_haut
+    paramb=s_bas
+    cv2.setMouseCallback(source_window,mouse_event_callback, [source_window, param,param2,paramh,paramb])
+    cc=cv2.flip(cc,0)
+   
+    cv2.imshow(source_window,cc)
 
 def get_sun_meudon (date_jd1):
     date_jd2=date_jd1+1
@@ -171,15 +220,31 @@ def get_sun_meudon (date_jd1):
     return sun_meudon
 
 
-def mouse_event_callback( event,x,y,flags,param):
-    if event == cv2.EVENT_MOUSEMOVE:
-        try :
-            y=param.shape[0]-y
-            param=param[y-150:y+150,x-150:x+150]
-            param=cv2.flip(param,0)
-            cv2.imshow('Zoom', param)
-        except:
-            pass
+def mouse_event_callback( event,x,y,flags,params):
+    global source_window
+    global img_data
+    try :
+        if event==cv2.EVENT_LBUTTONDOWN or event==cv2.EVENT_LBUTTONUP:
+            source_window=params[0]
+            img_data=params[2]
+            #print('mouse: ',params[0])
+            sh=int(params[3]/65000*255)
+            sb=int(params[4]/65000*255)
+            cv2.setTrackbarPos('Seuil bas','sliders',sb)
+            cv2.setTrackbarPos('Seuil haut','sliders',sh)
+            cv2.setWindowProperty('sliders',cv2.WND_PROP_TOPMOST,1)
+            cv2.setWindowProperty('Zoom',cv2.WND_PROP_TOPMOST,1)
+        if event == cv2.EVENT_MOUSEMOVE:
+            try :
+                img=np.copy(params[1])
+                y=img.shape[0]-y
+                img=img[y-150:y+150,x-150:x+150]
+                img=cv2.flip(img,0)
+                cv2.imshow('Zoom', img)
+            except:
+                pass
+    except:
+        pass
 
 def mouse_event2_callback( event,x,y,flags,param):
     global mouse_x, mouse_y
@@ -277,8 +342,8 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         section2 = [
                 [sg.Text('Observateur :', size=(12,1)), sg.Input(default_text=data_entete[0], size=(25,1),key='-OBSERVER-')],
                 [sg.Text('Contact :', size=(12,1)), sg.Input(default_text=data_entete[4], size=(25,1),key='-CONTACT-')],
-                [sg.Text('Site Long :', size=(12,1)), sg.Input(default_text=data_entete[2], size=(6,1),key='-SITE_LONG-'),sg.Text('N positif'),
-                 sg.Text('  Site Lat :', size=(12,1)), sg.Input(default_text=data_entete[3], size=(6,1),key='-SITE_LAT-'), sg.Text('E positif'),
+                [sg.Text('Site Long :', size=(12,1)), sg.Input(default_text=data_entete[2], size=(6,1),key='-SITE_LONG-'),sg.Text('E positif'),
+                 sg.Text('  Site Lat :', size=(12,1)), sg.Input(default_text=data_entete[3], size=(6,1),key='-SITE_LAT-'), sg.Text('N positif'),
                  sg.Text(' in decimal degree')],
                 [sg.Text('Instrument :', size=(12,1)), sg.Input(default_text=data_entete[1], size=(35,1),key='-INSTRU-')],
                 [sg.Text('Longueur d\'onde :', size=(12,1)), sg.Combo(list_wave[0], default_value=list_wave[0][0], size=(10,1),key='-WAVE-',enable_events=True),
@@ -297,8 +362,8 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         section2 = [
                 [sg.Text('Observer :', size=(12,1)), sg.Input(default_text=data_entete[0], size=(25,1),key='-OBSERVER-')],
                 [sg.Text('Contact :', size=(12,1)), sg.Input(default_text=data_entete[4], size=(25,1),key='-CONTACT-')],
-                [sg.Text('Site Long :', size=(12,1)), sg.Input(default_text=data_entete[2], size=(6,1),key='-SITE_LONG-'),sg.Text('N positive'),
-                 sg.Text('  Site Lat :', size=(12,1)), sg.Input(default_text=data_entete[3], size=(6,1),key='-SITE_LAT-'),sg.Text('E positive'),
+                [sg.Text('Site Long :', size=(12,1)), sg.Input(default_text=data_entete[2], size=(6,1),key='-SITE_LONG-'),sg.Text('E positive'),
+                 sg.Text('  Site Lat :', size=(12,1)), sg.Input(default_text=data_entete[3], size=(6,1),key='-SITE_LAT-'),sg.Text('N positive'),
                  sg.Text(' in decimal degree')],
                 [sg.Text('Instrument :', size=(12,1)), sg.Input(default_text=data_entete[1], size=(35,1),key='-INSTRU-')],
                 [sg.Text('Wavelength :', size=(12,1)), sg.Combo(list_wave[0], default_value=list_wave[0][0], size=(10,1),key='-WAVE-',enable_events=True), 
@@ -341,7 +406,8 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         tab3_layout =[
             #[sg.Checkbox(' Synthèse d\'une séquence d\'images décalées spectralement ', default=False, key='-VOL-')],
             [sg.Text("")],
-            [sg.Text('Plage en pixels :',size=(12,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='Volume',enable_events=True), sg.Text('+/- pixels')]
+            [sg.Text('Plage en pixels :',size=(12,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='Volume',enable_events=True), sg.Text('+/- pixels')],
+            [sg.Checkbox(' Création FITS 3D', default=False, key='-FITS3D-')],
             ]
        
         tab4_layout =[
@@ -394,7 +460,8 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         tab3_layout =[
             #[sg.Checkbox(' Generate a spectraly shifted images sequence ', default=False, key='-VOL-')],
             [sg.Text("")],
-            [sg.Text('Range in pixels :',size=(12,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='Volume',enable_events=True), sg.Text('+/- pixels')]
+            [sg.Text('Range in pixels :',size=(12,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='Volume',enable_events=True), sg.Text('+/- pixels')],
+            [sg.Checkbox(' Create FITS 3D', default=False, key='-FITS3D-')],
             ]
        
         tab4_layout =[
@@ -442,7 +509,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
              sg.FilesBrowse(' Open ',file_types=(("SER Files", "*.ser"),),initial_folder=os.path.join(WorkDir,previous_serfile))],
             
             [sg.TabGroup([[sg.Tab('  General  ', tab1_layout), sg.Tab('Doppler & Continuum', tab2_layout,), 
-                sg.Tab('Doppler sequence', tab3_layout,),
+                sg.Tab('Doppler Sequence', tab3_layout,),
                 sg.Tab('Magnetogram',tab4_layout,),
                 sg.Tab('Free line', tab5_layout)]],change_submits=True,key="TabGr",tab_background_color='#404040')],  
             [sg.Button('Ok', size=(14,1)), sg.Cancel('  Exit  ')],
@@ -461,6 +528,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Flag_sortie=False
     wavelength_found=list_wave[1][0]
     solar_dict={}
+
     
     while True:
         event, values = window.read()
@@ -488,6 +556,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 Flags["VOL"]=True
                 Flags["POL"]=False
                 Flags["WEAK"]=False
+                Flags["FITS3D"]=False
             if tab_sel=="Magnétogramme" or tab_sel=="Magnetogram":
                 Flags["DOPCONT"]=False
                 Flags["VOL"]=False
@@ -657,6 +726,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Flags["sortie"]=Flag_sortie
     Flags["FLIPRA"]=values['-RA_FLIP-']
     Flags["FLIPNS"]=values['-NS_FLIP-']
+    Flags["FITS3D"]=values['-FITS3D-']
    # print(Flags)
     
     ratio_fixe=float(values['-RATIO-'])
@@ -723,6 +793,8 @@ previous_serfile=''
 my_ini=os.getcwd()+'/inti.yaml'
 global mouse_x, mouse_y
 mouse_x,mouse_y=0,0
+global img_data
+
 
 # gestion dynamique de la taille ecran
 screen = tk.Tk()
@@ -800,7 +872,7 @@ while not Flag_sortie :
     # pour gerer la tempo des affichages des images resultats dans cv2.waitKey
     # si plusieurs fichiers à traiter
     if len(serfiles)==1:
-        tempo=60000 #tempo 60 secondes, pour no tempo mettre tempo=0 et faire enter pour terminer
+        tempo=90000 #tempo 60 secondes, pour no tempo mettre tempo=0 et faire enter pour terminer
         if  Flags["POL"]:
             tempo=3000 # tempo raccourcie après extraction zeeman 
     else:
@@ -934,10 +1006,13 @@ while not Flag_sortie :
         # Lecture nom filename  image recon
         if range_dec[0]==0:
             ImgFile=basefich+'_recon.fits'
-            hdulist = fits.open(ImgFile, memmap=False)
-            hdu=hdulist[0]
-            base_filename=hdu.header['FILENAME'].split('.')[0]
-            #print('filename : ',base_filename)
+        else :
+            ImgFile=basefich+'_dp'+str(range_dec[0])+'_recon.fits'
+            
+        hdulist = fits.open(ImgFile, memmap=False)
+        hdu=hdulist[0]
+        base_filename=hdu.header['FILENAME'].split('.')[0]
+        #print('filename : ',base_filename)
         
         Ratio_lum=(65536/np.max(Disk))*0.8
         Disk2=np.array((np.copy(Disk)*Ratio_lum),dtype='uint16')
@@ -975,8 +1050,15 @@ while not Flag_sortie :
             cv2.namedWindow('Zoom', cv2.WINDOW_NORMAL)
             cv2.resizeWindow('Zoom', 300, 300)
             cv2.moveWindow('Zoom',20,20)
+            #
+            cv2.namedWindow('sliders', cv2.WINDOW_AUTOSIZE)
+            cv2.moveWindow('sliders', int(top_w*1.3), 0)
+            cv2.resizeWindow('sliders',(600,100))
+            source_window='clahe'
+            
+            cv2.createTrackbar('Seuil haut', 'sliders', 0,255, on_change_slider)
+            cv2.createTrackbar('Seuil bas', 'sliders', 0,255, on_change_slider)
     
-
         
         # png image generation
         # image seuils moyen
@@ -989,12 +1071,18 @@ while not Flag_sortie :
         frame1[frame1>Seuil_haut]=Seuil_haut
         #print('seuil bas', Seuil_bas)
         #print('seuil haut', Seuil_haut)
+        
         fc=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
         fc[fc<0]=0
         frame_contrasted=np.array(fc, dtype='uint16')
         if len(frames)==1 and len(serfiles)==1:
             param=np.copy(frame_contrasted)
-            cv2.setMouseCallback('contrast',mouse_event_callback, param)
+            param2=np.copy(frame1)
+            paramh=Seuil_haut
+            paramb=Seuil_bas
+            source_window='contrast'
+            cv2.setMouseCallback('contrast',mouse_event_callback, [source_window,param, param2,paramh, paramb])
+            
         frame_contrasted=cv2.flip(frame_contrasted,0)
        
         cv2.imshow('contrast',frame_contrasted)
@@ -1058,6 +1146,7 @@ while not Flag_sortie :
                 he=round(cercle[3])
                 r=(min(wi,he))
                 r=int(r- round(r*disk_limit_percent))
+                #print(cercle, wi,he,r)
                 # prefer to really see deviation from circle
                 fc3=cv2.circle(frame2, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
                 #frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
@@ -1065,11 +1154,17 @@ while not Flag_sortie :
                 Threshold_Upper=np.percentile(frame1,99.9999)*0.5  #preference for high contrast
                 Threshold_low=0
                 img_seuil=seuil_image_force(frame1, Threshold_Upper, Threshold_low)
+                
                 frame_contrasted3=np.array(img_seuil, dtype='uint16')
                 
                 if len(frames)==1 and len(serfiles)==1:
                     param=np.copy(frame_contrasted3)
-                    cv2.setMouseCallback('protus',mouse_event_callback, param)
+                    param2=np.copy(fc3)
+                    paramh=Threshold_Upper
+                    paramb=Threshold_low
+                    source_window = 'protus'
+                    cv2.setMouseCallback('protus',mouse_event_callback, [source_window,param,param2, paramh, paramb])
+
                 
                 frame_contrasted3=cv2.flip(frame_contrasted3,0)
                 cv2.imshow('protus',frame_contrasted3)
@@ -1085,14 +1180,27 @@ while not Flag_sortie :
         #clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(5,5))
         clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
         cl1 = clahe.apply(frames[0])
+        
         Seuil_bas=np.percentile(cl1, 25)
         Seuil_haut=np.percentile(cl1,99.9999)*1.05
         cc=(cl1-Seuil_bas)*(65000/(Seuil_haut-Seuil_bas))
         cc[cc<0]=0
         cc=np.array(cc, dtype='uint16')
+        
+
         if len(frames)==1 and len(serfiles)==1:
             param=np.copy(cc)
-            cv2.setMouseCallback('clahe',mouse_event_callback, param)
+            param2=np.copy(cl1)
+            source_window='clahe'
+            img_data=param2
+            paramh=Seuil_haut
+            paramb=Seuil_bas
+            cv2.setMouseCallback('clahe',mouse_event_callback, [source_window,param,param2,paramh, paramb])
+            sb=int(Seuil_bas/65000*255)
+            sh=int(Seuil_haut/65000*255)
+            cv2.setTrackbarPos('Seuil bas','sliders',sb)
+            cv2.setTrackbarPos('Seuil haut','sliders',sh)
+            
         cc=cv2.flip(cc,0)
         cv2.imshow('clahe',cc)
 
@@ -1399,6 +1507,30 @@ while not Flag_sortie :
             os.replace(ImgFileb,racines[0]+str(ii)+".png")
             os.replace(ImgFiler,racines[1]+str(ii)+".png")
     
+        if Flags['VOL'] and Flags["FITS3D"]:
+            
+            hdr_vol=header
+            hdr_vol['NAXIS']=3
+            hdr_vol['NAXIS3']=len(frames)
+            hdr_vol['CTYPE3']='wavelength'
+            hdr_vol['CUNIT3']='Angstrom'
+            # insert fullprofile dans le nom
+            a=header['FILENAME'].split('SOLEX')
+            filename_3D=a[0]+'SOLEX_fullprofile'+a[1]
+            hdr_vol['FILENAME']=filename_3D
+            #print(hdr_vol['FILENAME'])
+            hdr_vol['CDELT3']=0.155
+            n=len(frames)-1
+            demi_n=int(n/2)
+            # remet la premiere frame au centre car correspond a dec=0
+            t=frames[0]
+            frames[0:demi_n-1]=frames[1:demi_n]
+            frames[demi_n+1:]=frames[demi_n:]
+            frames[demi_n]=t
+            
+            DiskHDU=fits.PrimaryHDU(frames,hdr_vol)
+            DiskHDU.writeto(filename_3D, overwrite='True')
+            
     
         # V3.2 -> tempo après sauvegarde des fichiers
         cv2.waitKey(tempo)
