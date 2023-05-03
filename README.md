@@ -68,21 +68,15 @@ Pour une installation automatique taper :
  `pip install -r requirements.txt` 
 
 
-## Lancement & Utilisation
+## Lancement & Operation
 
-- Dans le fenetre de pysimpleGUI entrer le nom du fichier ser à traiter
+Pour plus de details sur les fonctions avancées se référer au site:
+[http://valerie.desnoux.free.fr/inti/](http://valerie.desnoux.free.fr/inti/)
 
-- Angle de tilt: si a zero calcul automatique, si valeur differente de zero le calcul utilisera cette valeur
+- Dans la fenetre de pysimpleGUI selectionner le ou les fichiers ser à traiter
+- Clicker sur Ok et c'est tout
 
- - Ratio SY/SX: si a zero calcul automatique, si valeur differente de zero le calcul utilisera cette valeur
-
-- Cocher la case pour afficher un disque noir sur l'image png dont les seuils permettent de faire ressortir les protuberances
-
-- Cocher la case pour ne sauvegarder en fits que les deux images finales _recon.fits et _clahe.fits
-
-- Shift: decalage en pixels par rapport au minimum de la raie pour reconstruire sur une autre longueur d'onde
-exemple: decalage de n pixels pour reconstruire le continuum
-
+INTI va automatiquement generer l'image monochromatique du disque solaire à partir des scans
 
 - Lors de l'affichae final des 4 images - appuyer sur "enter" pour sortir ou laisser faire la temporisation d'une minute
 
@@ -90,10 +84,7 @@ exemple: decalage de n pixels pour reconstruire le continuum
 
     Les fichiers suivants sont stockés dans le repertoire du fichier ser
     - xx_mean.fits: image moyenne de toutes les trames de la video ser du spectre
-    - xx_img.fits: image brute monochromatique
-    - xx_corr.fits: image corrigée des lignes aberrantes
-    - xx_circle.fits: image circularisée
-    - xx_flat.fits: image corrigée du flat
+    - xx_raw.fits: image brute monochromatique
     - xx_recon.fits: image finale, corrigée du slant
     - xx_clahe.fits: image finale, traitement par Contrast Local Adapative Histogram Enhancement (CLAHE)
 
@@ -160,21 +151,15 @@ For an automatic installation type :
  `pip install -r requirements.txt` 
 
 
-## Launching & Using
+## Launching & Operating
+
+Refer to the website for details on advanced features :
+[http://valerie.desnoux.free.fr/inti/](http://valerie.desnoux.free.fr/inti/)
 
 - In the pySimpleGUI window enter the name of the ser file to process
+- Click on Ok and that's it
 
-- Tilt angle: if at zero automatic calculation, if value different from zero the calculation will use this value
-
- - SY/SX ratio: if at zero automatic calculation, if different from zero the calculation will use this value
-
-- Check the box to display a black disk on the png image whose thresholds allow to highlight the protuberances
-
-- Check the box to save in fits only the two final images _recon.fits and _clahe.fits
-
-- Shift: shift in pixels from the minimum of the line to reconstruct on another wavelength
-example: shift of n pixels to reconstruct the continuum
-
+INTI will automatically process your scan and generate the monochromatic sun disk.
 
 - When the final 4 images are displayed - press "enter" to exit or let the one minute delay run
 
@@ -182,9 +167,6 @@ example: shift of n pixels to reconstruct the continuum
 
     The following files are stored in the ser file directory
     - xx_mean.fits: average image of all ser video frames in the spectrum
-    - xx_img.fits: raw monochromatic image
-    - xx_corr.fits: image corrected for outliers
-    - xx_circle.fits: circularized image
-    - xx_flat.fits: flat corrected image
+    - xx_raw.fits: raw monochromatic image
     - xx_recon.fits: final image, corrected for slant
     - xx_clahe.fits: final image, processed by Contrast Local Adapative Histogram Enhancement (CLAHE)
