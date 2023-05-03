@@ -6,6 +6,10 @@ Created on Thu Dec 31 11:42:32 2020
 
 
 ------------------------------------------------------------------------
+version 4.0.5 du 3 mai - Antibes
+- ajout des labels et longueurs d'onde d'apres fichier Meudon
+- test depassement pixel_shift
+
 version du 19 mars 2023 - paris
 - autorise inversions et rotations sur toutes les images
 - decale de 1 pixel le centre du disque en inversion NS
@@ -527,7 +531,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
             kend=len(range_dec)
             
     else:
-        shift_max=range_dec[0]
+        shift_max=abs(range_dec[0])
         if ((posX_min_slit-shift_max)<=1) or ((posX_max_slit+shift_max)>=iw):
             v=min(posX_min_slit-2, iw-posX_max_slit-1)
             logme('*******************************')

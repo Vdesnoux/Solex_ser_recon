@@ -11,6 +11,10 @@ Front end de traitements spectro helio de fichier ser
 
 
 ----------------------------------------------------------------------------------------------------------------
+version 4.0.5 du 3 mai - Antibes
+- ajout des labels et longueurs d'onde d'apres fichier Meudon
+- test depassement pixel_shift
+
 version du 22 mars 2023 - paris
 - bug base_filename fi si dpx
 - ajout creation fits3D avec checkbox dans sequence doppler
@@ -164,7 +168,7 @@ LG = 2
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V4.0.4 by V.Desnoux et.al. '
+current_version = 'Inti V4.0.5 by V.Desnoux et.al. '
 
 def on_change_slider(x):
     # x est la valeur du curseur
@@ -315,7 +319,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Flags["POL"]=False
     Flags["WEAK"]=False
     Racines=[]
-    list_wave=[['Manual','Ha','CaK3', 'CaK1v','CaH', 'HeID3'],[0,6562.762,3933.663,3932.163, 3968.469,5877.3]]
+    list_wave=[['Manual','Ha','Ha2cb','Cak', 'Cak1v','Cah', 'Cah1v','HeID3'],[0,6562.762,6561.432,3933.663,3932.163, 3968.469,3966.968,5877.3]]
 
     
     if LG == 1:
