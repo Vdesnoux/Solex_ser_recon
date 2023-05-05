@@ -11,6 +11,9 @@ Front end de traitements spectro helio de fichier ser
 
 
 ----------------------------------------------------------------------------------------------------------------
+version 4.0.6 du 3 mai - Antibes
+- ajout calculette pour disp par longueur d'onde
+
 version 4.0.5 du 3 mai - Antibes
 - ajout des labels et longueurs d'onde d'apres fichier Meudon
 - test depassement pixel_shift
@@ -168,7 +171,7 @@ LG = 2
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V4.0.5 by V.Desnoux et.al. '
+current_version = 'Inti V4.0.6 by V.Desnoux et.al. '
 
 def on_change_slider(x):
     # x est la valeur du curseur
@@ -293,6 +296,68 @@ def display_mean_img ():
     cv2.setMouseCallback('mean',mouse_event2_callback, mean_trame_pad)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+    
+def UI_calculette(size_pix_cam, bin_cam):
+    sg.theme('Dark2')
+    sg.theme_button_color(('white', '#500000'))
+    resultat=0
+    disp=0
+    wav_name=''
+    wav_dict={'Ha':6562.762,'Ca':3968.469,'He':5877.3}
+    if LG==1 : # en français
+        layout=[
+            [sg.Radio('Ha', 'wav',key="-HA-", default=True), sg.Radio('Ca', 'wav',key='-CA-'), sg.Radio('He', 'wav', key='-HE-')],
+            [sg.Text("Valeur en angströms : ", size=(20,1)), sg.Input(default_text='1', size=(7,1), key='-ang-', background_color='light yellow')],
+            [sg.Text("Taille pixel caméra en mm : ", size=(20,1)), sg.Input(default_text=str(size_pix_cam), size=(7,1), key='-size-')],
+            [sg.Text("Facteur de Binning : ", size=(20,1)), sg.Input(default_text=str(bin_cam), size=(7,1), key='-bin-')],
+            [sg.Text(str(resultat)+ " en pixels", size=(28,1), key='-RESULT-', background_color='dark green')],
+            [sg.Text('Dispersion en Ang/mm : '),sg.Text(str(disp), key='-DISP-')],
+            [sg.Button("Calcul ", key='-VALID-'),sg.Text('     '),sg.Button('Fermer', key='-Exit-')]
+            ]
+    else: # en anglais
+        layout=[
+            [sg.Radio('Ha', 'wav',key="-HA-", default=True), sg.Radio('Ca', 'wav',key='-CA-'), sg.Radio('He', 'wav', key='-HE-')],
+            [sg.Text("Value in angströms : ", size=(20,1)), sg.Input(default_text='1', size=(8,1),key='-ang-',background_color='light yellow')],
+    
+            [sg.Text("Camera pixel size in mm : ", size=(20,1)), sg.Input(default_text=str(size_pix_cam), size=(8,1), key='-size-')],
+            [sg.Text("Binning factor : ", size=(20,1)), sg.Input(default_text=str(bin_cam), size=(8,1),key='-bin-')],
+            [sg.Text(str(resultat) + " in pixels", size=(28,1), key='-RESULT-', background_color='dark green')],
+            [sg.Text('Dispersion in Ang/mm : '),sg.Text(str(disp),key='-DISP-')],
+            [sg.Button("Compute ", key='-VALID-'),sg.Text('     '),sg.Button('Exit', key='-Exit-')]
+            ]
+    a,b=win_pos
+    win2_pos=(a+250, b+150)
+    window2 = sg.Window('Sol\'Ex calculette', layout, location=win2_pos,finalize=True)
+    window2.BringToFront()
+    
+    while True:
+        event, values = window2.read()
+        #print(event, values)
+        if event == sg.WIN_CLOSED or event == '-Exit-': 
+            break          
+        if event == '-VALID-' : 
+            if values['-HA-'] == True :
+                wav_name = 'Ha'
+            if values['-CA-'] == True:
+                wav_name = 'Ca'
+            if values['-HE-'] == True:
+                wav_name = 'He'
+            wave=wav_dict[wav_name]*1e-7
+            alpha=np.degrees(np.arcsin((2400*wave)/(2*np.cos(np.radians(17)))))+17
+            beta=alpha-34
+            size_pix_cam=float(values['-size-'])
+            bin_cam=float(values['-bin-'])
+            val_toconvert=float(values['-ang-'])
+            disp = 1e7 * size_pix_cam* np.cos(np.radians(beta)) / 2400 / 125
+            val_ang_onepix= disp * bin_cam
+            #print(val_ang_onepix)
+            resultat=round(val_toconvert / val_ang_onepix)
+            window2['-RESULT-'].update(str(resultat)+'  pixels')
+            window2['-DISP-'].update("{:.3f}".format(disp))
+            
+            
+    window2.close()
+    return resultat, size_pix_cam, bin_cam
 
 def collapse(layout, key):
     """
@@ -307,7 +372,7 @@ def collapse(layout, key):
 
 
 def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, poly, pos_free_blue, 
-                  pos_free_red,win_pos, previous_serfile, data_entete,saved_angP,Flags):
+                  pos_free_red,win_pos, previous_serfile, data_entete,saved_angP,Flags, size_pix_cam, bin_cam):
 
     sg.theme('Dark2')
     sg.theme_button_color(('white', '#500000'))
@@ -319,7 +384,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Flags["POL"]=False
     Flags["WEAK"]=False
     Racines=[]
-    list_wave=[['Manual','Ha','Ha2cb','Cak', 'Cak1v','Cah', 'Cah1v','HeID3'],[0,6562.762,6561.432,3933.663,3932.163, 3968.469,3966.968,5877.3]]
+    list_wave=[['Manual','Ha','Ha2cb','Cah','Cah1v','Cak','Cak1v','HeID3'],[0,6562.762,6561.432,3968.469,3966.968,3933.663,3932.163,5877.3]]
 
     
     if LG == 1:
@@ -397,7 +462,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
              sg.T('Database compatibilité', enable_events=True, text_color='white', k='-OPEN SEC2-TEXT')],
             [collapse(section2, '-SEC2-')],
             [sg.T("")],
-            [sg.Text('Décalage en pixels :',size=(15,1)),sg.Input(default_text='0',size=(4,1),key='-DX-',enable_events=True)]
+            [sg.Text('Décalage en pixels :',size=(15,1)),sg.Input(default_text='0',size=(4,1),key='-DX-',enable_events=True), sg.Button('Calc')]
             ]
         
         tab2_layout =[
@@ -451,7 +516,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
              sg.T('Database compatibility', enable_events=True, text_color='white', k='-OPEN SEC2-TEXT')],
             [collapse(section2, '-SEC2-')],
             [sg.T("")],
-            [sg.Text('Shift in pixels :',size=(11,1)),sg.Input(default_text='0',size=(4,1),key='-DX-',enable_events=True)]
+            [sg.Text('Shift in pixels :',size=(11,1)),sg.Input(default_text='0',size=(4,1),key='-DX-',enable_events=True), sg.Button('Calc')]
             ]
         
         tab2_layout =[
@@ -545,6 +610,10 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             display_mean_img()
             window['xmin'].update(str(mouse_x))
             window['y_xmin'].update(str(mouse_y))
+            
+        if event=='Calc':
+            res_dec, size_pix_cam, bin_cam =UI_calculette(size_pix_cam, bin_cam)
+            window['-DX-'].update(str(res_dec))
 
         
         if event=='TabGr':
@@ -783,7 +852,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Racines.append(values['racine_bleu'])
     Racines.append(values['racine_rouge'])
     
-    return FileNames, Shift, Flags, ratio_fixe,ang_tilt, poly, Racines, Data_entete,ang_P, solar_dict
+    return FileNames, Shift, Flags, ratio_fixe,ang_tilt, poly, Racines, Data_entete,ang_P, solar_dict, size_pix_cam, bin_cam
 
 """
 -------------------------------------------------------------------------------------------
@@ -814,7 +883,9 @@ while not Flag_sortie :
     
     #my_ini=os.path.dirname(sys.argv[0])+'/inti.yaml'
     #my_ini=os.getcwd()+'/inti.yaml'
-    my_dictini={'directory':'', 'dec doppler':3, 'dec cont':15, 'poly_slit_a':0, "poly_slit_b":0,'poly_slit_c':0, 
+    my_dictini={'directory':'', 'dec doppler':3, 'dec cont':15, 
+                'size_pix_cam':'0.0024', 'bin_cam':'1',
+                'poly_slit_a':0, "poly_slit_b":0,'poly_slit_c':0, 
                 'ang_tilt':0, 'ratio_sysx':0, 'poly_free_a':0,'poly_free_b':0,'poly_free_c':0,
                 'pos_free_blue':0, 'pos_free_red':0,
                 'win_posx':300, 'win_posy':200, 'observer':'', 'instru':'','site_long':0, 'site_lat':0,
@@ -853,6 +924,19 @@ while not Flag_sortie :
     else:
         Flags['FLIPRA']=0
         Flags['FLIPNS']=0
+    
+    if 'size_pix_cam' not in my_dictini:
+        # si pas dans fichier ini
+        my_dictini['size_pix_cam']='0.0024'
+        size_pix_cam='0.0024'
+    else :
+        size_pix_cam=my_dictini['size_pix_cam']
+    
+    if 'bin_cam' not in my_dictini:
+        my_dictini['bin_cam']='1'
+        bin_cam='1'
+    else:
+        bin_cam=my_dictini['bin_cam']
         
     win_pos=(w_posx,w_posy)
     data_entete=[my_dictini['observer'], my_dictini['instru'],float(my_dictini['site_long']),float(my_dictini['site_lat']),my_dictini['contact'],
@@ -861,9 +945,10 @@ while not Flag_sortie :
     
     # Recupere paramatres de la boite de dialogue
     #print('serfile previous : ', previous_serfile)
-    serfiles, Shift, Flags, ratio_fixe,ang_tilt, poly, racines, data_entete,ang_P,solar_dict= UI_SerBrowse(WorkDir, saved_tilt, saved_ratio,
+    serfiles, Shift, Flags, ratio_fixe,ang_tilt, poly, racines, data_entete,ang_P,solar_dict, size_pix_cam, bin_cam= UI_SerBrowse(WorkDir, saved_tilt, saved_ratio,
                                                                              dec_pix_dop, dec_pix_cont, poly,pos_free_blue, pos_free_red,
-                                                                             win_pos, previous_serfile, data_entete,saved_angP, Flags)
+                                                                             win_pos, previous_serfile, data_entete,saved_angP, Flags,
+                                                                             size_pix_cam, bin_cam)
     serfiles=serfiles.split(';')
     #print('serfile : ',  len(serfiles))
     if len(serfiles)==1 :
@@ -928,6 +1013,8 @@ while not Flag_sortie :
         my_dictini['wave_label']=data_entete[6]
         my_dictini['inversion EW']=Flags['FLIPRA']
         my_dictini['inversion NS']=Flags['FLIPNS']
+        my_dictini['size_pix_cam']=size_pix_cam
+        my_dictini['bin_cam']=bin_cam
         
         if Flags['WEAK']:
            my_dictini['pos_free_blue']=round(poly[2]+Shift[1])
