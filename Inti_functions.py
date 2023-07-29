@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 #import time
 import sys
-from scipy.ndimage import gaussian_filter1d, rotate
+from scipy.ndimage import gaussian_filter1d, rotate, median_filter
+from scipy.signal import savgol_filter
 import ellipse as el
 from matplotlib.patches import Ellipse
 import cv2 as cv2
@@ -18,6 +19,16 @@ import cv2 as cv2
 #import imutils
 
 """
+version V4.1.2 du 8 juiller 2023
+- ajout detection outlier avec polynome
+- gestion seuil haut = seuil bas dans seuil_force
+
+version 1 juillet 23 Paris
+- gestion outliers edge chgt zone filtre gaussien de 31 a 21 et zecl=0
+
+version 1 juillet 23 Paris
+- gestion outliers edge
+
 version du 29 janvier 23 Antibes
 - correction cercle dimensions si ratio fixe
 - ajout ligne zero en debut et fin pour meilleure detection bords
@@ -66,7 +77,7 @@ def logme(toprint):
 def detect_bord (img, axis, offset):
     #axis donne la direction de detection des bords si 1 vertical, ou 0 horiz
     #offset: decalage la coordonnée pour prendre en compte le lissage gaussien
-    
+    debug=False
     
     # pretraite l'image pour eliminer les zone trop blanche
     img_mean=1.3*np.mean(img) #facteur 1.3 pour eviter des artefacts de bords
@@ -78,7 +89,7 @@ def detect_bord (img, axis, offset):
     # on part de cette image pour la detection haut bas
     ih=img.shape[0]
     iw=img.shape[1]
-    debug=False
+    
     if axis==1:
         # Determination des limites de la projection du soleil sur l'axe Y
         #ymean=np.mean(img[10:,:-10],1)
@@ -89,6 +100,7 @@ def detect_bord (img, axis, offset):
         
 
         ymean=np.mean(img_c,1) #MattC
+        
         if debug:
             plt.imshow(img_c)
             plt.show()
@@ -306,27 +318,43 @@ def detect_noXlimbs (myimg):
     
     return flag_nobords
 
+
 def detect_edge (myimg,zexcl, crop, disp_log):
     edgeX=[]
     edgeY=[]
     bord_droit=[]
     bord_gauche=[]
-    #zexcl=0.01
+    bord_droitY=[]
+    bord_gaucheY=[]
+    zexcl=0.01 # rendu obsolete
     
-    debug=False
-    
+    debug=False # les images
+    debug1=False #les courbes
+   
+    # au cas ou il fallait faire differament avec fort tilt
     if crop!=0:
-        myimg_crop=myimg[crop:-crop,:]
+        myimg_crop=myimg
+        #myimg_crop=myimg[crop:-crop,:]
         #print("crop...", crop)
     else:
         myimg_crop=myimg
-    #detect si pas de limbes droits et/ou gauche
-    
-    y1,y2=detect_bord (myimg_crop, axis=1,offset=5)    # bords verticaux
-    #x1,x2= detect_bord(myimg_crop,axis=0, offset=0)
-    y1=y1+crop
-    y2=y2+crop
-    
+        
+    #detect si pas de limbes droits et/ou gauche  
+    y1,y2=detect_bord (myimg_crop, axis=1,offset=0)    # bords verticaux
+    x1,x2= detect_bord(myimg_crop,axis=0, offset=0)
+    if crop >=100 : # fort tilt
+        zexcl=0
+        milieu=int(x1+(x2-x1)/2)
+        sub_img1=myimg_crop[:,0:milieu]
+        sub_img2=myimg_crop[:,milieu:-5]
+        # bords vert gauche
+        y1g,y2g=detect_bord (sub_img1, axis=1,offset=0)
+        y1d,y2d=detect_bord (sub_img2, axis=1,offset=0)
+        y1=min(y1g,y1d)
+        y2=max(y2g,y2d)
+        print('y1,y2 crop', y1,y2, crop)
+        
+        
 
     zone_fit=abs(y2-y1)
     ze=int(zexcl*zone_fit)
@@ -335,12 +363,13 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     img_mean=1.3*np.mean(myimg) #facteur 1.3 pour eviter des artefacts de bords
     img_c=np.copy(myimg)
     img_c[img_c>img_mean]=img_mean
-    #img_c=cv2.blur(img_c,(5,5))
-    if debug :
-        plt.imshow(img_c)
-        plt.show()
+
+   
     k=0
     s=[]
+
+    #if crop!=0:
+        #print('zone : ',y1+ze, y2-ze)
 
     for i in range(y1+ze,y2-ze):
         li=np.copy(img_c[i,:-5])
@@ -356,57 +385,175 @@ def detect_edge (myimg,zexcl, crop, disp_log):
 
         li[li>bb]=bb
         #li[li<4000]=30
+        #li_med=median_filter(li,size=50)
         li_filter=gaussian_filter1d(li, 11)
         li_gr=np.gradient(li_filter)
+        #li_gr=np.gradient(li_med)
         
         
-        x1=li_gr.argmax()
-        x2=li_gr.argmin()
+        x1li=li_gr.argmax()
+        x2li=li_gr.argmin()
+
         
-        if debug :
-            if i in range(576, 577) or i in range (498,499):
+        if 2==1 :
+            if i in range(320, 323) or i in range (700,703):
             #if x1 <2500 :
-                b97=np.percentile(li,97)
-                print(b97)
-                plt.plot(myli)
-                plt.title('Profil ligne - sans seuils ni filtre gaussien '+str(i))
+
+                plt.plot(li)
+                plt.title('Profil ligne '+str(i))
                 plt.show()
+                #plt.plot(li_med)
+                #plt.title('Median Profil ligne '+str(i))
+                #plt.show()
                 plt.plot(li_gr)
                 plt.title('Gradient Profil ligne '+str(i))
                 plt.show()
         
+
+
         
         #x_argsort=li_gr.argsort()
-        if x1==0 or x2==0 :
+        
+        if x1li==0 or x2li==0 :
             pass
         else:
-            s=np.array([x1,x2])
+            s=np.array([x1li,x2li])
             
             if s.size !=0:
                 c_x1=s[0]+offset
                 c_x2=s[-1]-offset
-                #if i not in range(500,700):
-                edgeX.append(c_x1)
-                bord_gauche.append([i,c_x1])
-                edgeY.append(i)
-                edgeX.append(c_x2)
-                bord_droit.append([i,c_x2])
-                edgeY.append(i)
+                bord_gauche.append(c_x1)
+                bord_gaucheY.append(i)
+                bord_droit.append(c_x2)
+                bord_droitY.append(i)
                 k=k+1
+   
+    bords=[bord_gauche, bord_droit]
+    bordsY=[bord_gaucheY, bord_droitY] 
+    
+    if debug :
+        plt.imshow(myimg)
+        # plot edges on image as red dots
+        a=bords[0]+bords[1]
+        b=bordsY[0]+bordsY[1]
+        plt.scatter(a,b,s=0.1, marker='.', edgecolors=('red'))
+        plt.show()
+    
+    # elimine les points le long des bords haut et bas si disk pas entier
+    # si on divise par continuum on n'exclue pas les bords de crop
+    # si on filtre trop on elimine des points sur un disue entier
+    for i in range(0,2) :
+        exd=np.copy(bords[i]) # bord
+        #eY=np.copy(bordsY[i])
+        gr_ex=abs(np.gradient(exd))
+        
+        #smooth=gaussian_filter1d(gr_ex, 21)
+        #d=gr_ex-smooth
 
-    if 2==1:
-        ex=np.copy(bord_droit)
-        gr_ex=np.gradient(ex)
-        #plt.plot(ex)
-        #plt.show()
-        plt.plot(gr_ex)
+        g=[x for x in gr_ex if x > 0]
+        #g=[x for x in d if (x > 0 and x <5) ]
+        th=np.mean(g)
+        
+        if debug1 :
+            print("grmean ", np.mean(g))
+            plt.plot(gr_ex)
+            plt.show()
+            #plt.plot(d)
+            #plt.title('gardient sans continuum')
+            plt.show()
+    
+        # filtrage
+        kk=1
+        for k in range(0,len(gr_ex)-1) :   
+            #if abs ((bords[i][kk]-bords[i][kk-1])/(bordsY[i][kk]-bordsY[i][kk-1])) > th :
+            if abs(gr_ex[k]) > th or bords[i][kk]<=abs(x1-100) or bords[i][kk]>=x2+100:
+            #if abs(d[k]) > th :
+                #print("kk ",kk)
+                del bords[i][kk]
+                del bordsY[i][kk]
+                kk=kk-1
+            kk=kk+1
+    if debug :
+        plt.imshow(myimg)
+        # plot edges on image as red dots
+        a=bords[0]+bords[1]
+        b=bordsY[0]+bordsY[1]
+        plt.title('filtre gradient')
+        plt.scatter(a,b,s=0.1, marker='.', edgecolors=('red'))
         plt.show()
         
-    #X=np.array(bord_gauche+bord_droit)
-    X = np.array(list(zip(edgeX, edgeY)), dtype='float')  
+    for s in range (0,2) :
+        # divise profil des bords par son filtre gaussien et elimine les points 
+        # au dessus de 3 pixels
+        for i in range(0,2) :
     
+            #s = gaussian_filter1d(bords[i], 11)
+            #sav = savgol_filter(bords[i], 301, 2)
+            
+            p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],6)
+            fit=[]
+            for y in bordsY[i] :
+                fitv = p[0]*y**6+p[1]*y**5+p[2]*y**4+p[3]*y**3+p[4]*y**2+p[5]*y+p[6]
+                fit.append(fitv)
+            #print('Coef poly ',p)
+            fp = bords[i]-np.array(fit)
+            
+            #f = bords[i]-s
+            #fsav = bords[i]-sav
+            
+            if debug1 :
+                plt.scatter(bordsY[i], bords[i], s=0.1,marker='.')
+                #plt.show()
+                #plt.plot(s)
+                #plt.plot(sav)
+                plt.scatter(bordsY[i],np.array(fit), s=0.1,marker='.')
+                plt.show()
+                #plt.plot(f)
+                #plt.plot(fsav)
+                plt.plot(fp)
+                plt.hlines(3, 0, len(bords[i]))
+                plt.ylim((-20,20))
+                plt.show()
+            
+            # filtrage
+            kk = 1
+            # attention a direction bords droit ou gauche
+            for k in range(0,len(fp)-1) :   
+                if i==0 :
+                    if (fp[k]) < -3:
+                        #print("kk ",kk)
+                        del bords[i][kk]
+                        del bordsY[i][kk]
+                        kk=kk-1
+                    kk=kk+1
+                else:
+                    if (fp[k]) > 3 :
+                        #print("kk ",kk)
+                        del bords[i][kk]
+                        del bordsY[i][kk]
+                        kk=kk-1
+                        
+                    kk=kk+1
+            
+    # recombine bords droit et gauche
+    edgeX=bords[0]+bords[1]
+    edgeY=bordsY[0]+bordsY[1]
+    
+    X = np.array(list(zip(edgeX, edgeY)), dtype='float')  
+   
+    
+    if debug :
+        plt.imshow(myimg)
+        # plot edges on image as red dots
+        np_m=np.asarray(X)
+        xm,ym=np_m.T
+        plt.title('filtre gradient et outliers continuum')
+        plt.scatter(xm,ym,s=0.1, marker='.', edgecolors=('red'))
+        plt.show()
 
     return X
+
+
 
 def fit_ellipse (myimg,X,disp_log):
     """
@@ -455,7 +602,10 @@ def fit_ellipse (myimg,X,disp_log):
                 edgecolor='b', fc='None', lw=1, label='Fit', zorder=2)
     
             ax=plt.gca()
+            #ax.set_ylim[0,2000]
+            #plt.xlim [0,2000]
             ax.add_patch(ellipse)
+
         except:
             pass
        
@@ -523,6 +673,212 @@ def get_line_pos_absoption(profil, pos, search_wide):
     posx = p1 + xmin - 1 + xpmin
   
     return posx    
+
+def auto_crop_img (cam_height, h,w, frame, cercle0, debug_crop, param):
+    
+    debug_crop=False
+    
+    try :
+        crop_force_hauteur = int(param[2])
+        crop_force_largeur = int(param[3])
+    except :
+        crop_force_hauteur = 0
+        crop_force_largeur = 0
+
+    ih=cam_height
+    asym_h = min(cercle0[1], h-cercle0[1])
+    diam_sol = 2 *cercle0[2]
+    
+    if crop_force_hauteur != 0 :
+        crop_he = crop_force_hauteur
+    else :
+        crop_he = ih+100 # pour accomoder angle de tilt
+    
+    # il faut changer les coordonnées du centre de cercle0
+    centre_hor=cercle0[0]
+    centre_vert=cercle0[1]
+    
+    if asym_h <0  or asym_h <= cercle0[2]+20:
+        #print("on ne centre pas en hauteur")
+        if crop_force_largeur != 0 :
+            crop_wi = crop_force_largeur
+        else :
+            # largeur image multiple de ih
+            if diam_sol+50 >= 2*ih :
+                #print("on prend largeur image a 3*ih", 3*ih)
+                crop_wi = ih*3
+            else  :
+                if diam_sol +50 >=ih :
+                    #print("on prend largeur image a 2*ih",2*ih)
+                    crop_wi = ih*2
+                else :
+                    #print("on garde image carrée")
+                    crop_wi = crop_he
+
+        # translation
+        d_hor = cercle0[0]-crop_wi//2
+        d_vert = 0
+        centre_hor = crop_wi//2
+        
+    else :
+        crop_wi = crop_he
+        if crop_force_hauteur != 0 :
+            crop_he = crop_force_hauteur
+        if crop_force_largeur != 0 :
+            crop_wi= crop_force_largeur
+            
+        #print('on centre et on crop')
+        
+        # translation
+        d_hor = cercle0[0]-crop_wi//2
+        d_vert = cercle0[1]-crop_he//2
+        centre_hor = crop_wi//2
+        centre_vert = crop_he//2
+
+
+    if d_hor < 0: # doit decaler crop_img 
+        dch_left=-d_hor
+        dh_left=0
+    else:
+        dch_left=0
+        dh_left=d_hor
+        
+    if d_vert <0 :
+        dcv_top=-d_vert
+        dv_top=0
+    else:
+        dcv_top=0
+        dv_top=d_vert
+    """
+    if w-crop_wi-d_hor < 0 : # doit faire du padding a droite
+        dch_droite = -d_hor+w
+        dh_droite=w
+    else:
+        dch_droite=crop_wi
+        dh_droite=d_hor+crop_wi
+    """
+    if w-crop_wi+dch_left < 0 : # doit faire du padding
+        dch_droite=dch_left+w
+        dh_droite=w
+    else:
+    
+        if d_hor <0 :
+            dch_droite=crop_wi
+            #dv_bas=-d_vert+crop_he
+            #dv_bas=dv_top+crop_he
+            dh_droite=crop_wi-dch_left
+        else :
+            if crop_wi+dh_left> w :
+                dch_droite=w-dh_left
+                dh_droite= w
+            else :
+                dch_droite=crop_wi
+                dh_droite=crop_wi+dh_left
+    
+    if debug_crop :
+        if debug_crop:
+            print("hauteur cam",cam_height)
+            print("hauteur image", h)
+            print("asym_h", asym_h)
+            print("diam_sol", diam_sol)
+            print(" h_img - h_cam", h-ih)
+            print('d_hor', d_hor)
+            print('d_vert', d_vert)
+            print(crop_he,crop_wi)
+            
+    #if h-crop_he-d_vert < 0 : # doit faire du padding  en bas
+    if h-crop_he+dcv_top < 0 : # doit faire du padding  en bas
+        if crop_he+dv_top > h :
+            if d_vert <0 :
+                dcv_bas=h+dcv_top
+                dv_bas=h
+            else :
+                dcv_bas=h-dv_top
+                dv_bas=h
+        else :
+            dcv_bas=dcv_top+h
+            dv_bas=h
+    else:
+        if d_vert == 0 :
+            # image plus grande donc on va la centrer
+            d_vert =(crop_he-h)//2+d_vert
+            dv_top=-d_vert
+            centre_vert=cercle0[1]-dv_top
+            dv_bas=-d_vert+crop_he
+            dcv_bas=crop_he
+            
+            
+        else :
+            if d_vert <0 :
+                dcv_bas=crop_he
+                #dv_bas=-d_vert+crop_he
+                #dv_bas=dv_top+crop_he
+                dv_bas=crop_he-dcv_top
+            else :
+                if crop_he+dv_top> h :
+                    dcv_bas=h-dv_top
+                    dv_bas= h
+                else :
+                    dcv_bas=crop_he
+                    dv_bas=crop_he+dv_top
+     
+    if debug_crop:
+        print('hor crop',dch_left, dch_droite)
+        print('hor frame', dh_left, dh_droite)
+        print('vert crop',dcv_top, dcv_bas)
+        print('vert frame', dv_top, dv_bas)
+    
+    try :
+        crop_img=np.full((crop_he, crop_wi),300, dtype='uint16')
+        crop_img[dcv_top:dcv_bas,dch_left:dch_droite]=frame[dv_top:dv_bas,dh_left:dh_droite]
+    except:
+        cercleC=cercle0
+        crop_he=0
+        
+        
+    if debug_crop:
+        plt.imshow(frame)
+        plt.show()
+       
+        plt.imshow(crop_img)
+        plt.show()
+    
+    #print('xcc, ycc center and radius ', centre_hor, centre_vert, cercle0[2] )
+    print('crop image (h,w)', crop_img.shape)
+        
+    #cv2.imwrite(basefich+img_suff[k]+'_crop.png',crop_img)
+    cercleC=[centre_hor, centre_vert, cercle0[2],cercle0[2]]
+
+    return cercleC, crop_he, crop_wi, crop_img
+
+def translate_img (img_mean, poly):
+    # calcul des ecarts entre min et fit polynome
+    fit=[]
+    ecart=[]
+    LineRecal = 1
+    
+    a=poly[0]
+    b=poly[1]
+    c=poly[2] # constante a y=0
+    
+    ih, iw = img_mean.shape
+    img_mean_redresse = np.copy (img_mean)
+    
+    for y in range(0,ih):
+        x=a*y**2+b*y+c
+        ecart.append((x)-c)
+        
+    # ensuite il faut decaler les lignes en fonction de ecart
+    for y in range(0,ih):
+        myline= img_mean[y:y+1,:][0]
+        # on interpole
+        f=interp1d(np.arange(0,iw)-ecart[y],myline,kind='linear',fill_value="extrapolate")
+        
+        interp_line = f(np.arange(0,iw))
+        img_mean_redresse[y:y+1,:] = interp_line
+
+    
+    return img_mean_redresse
 
 
 
