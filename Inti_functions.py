@@ -15,6 +15,8 @@ from scipy.signal import savgol_filter
 import ellipse as el
 from matplotlib.patches import Ellipse
 import cv2 as cv2
+import astropy.time
+import math
 
 #import imutils
 
@@ -58,6 +60,32 @@ Version du 19 aout 2021
 
 mylog=[]
 
+# from J.Meeus
+def angle_P_B0 (date_utc):
+    time = astropy.time.Time(date_utc)
+    myJD=time.jd
+    date_1853JD2=2398167.2763889 # ref 9 nov 1853 18:37 
+    theta = ((myJD - date_1853JD2) /27.2743) +1
+    a=360*(theta-int(theta))
+    L0=360-a
+    Rot_Carrington = (myJD - 2398220) * 360/25.38
+
+    I = 7.25
+    K = 73.6667 + 1.3958333*(myJD - 2396758)/36525
+    T = (myJD - 2451545)/36525
+    Lo = (0.0003032*T + 36000.76983)*T + 280.46645
+    M = ((-0.00000048*T - 0.0001559)*T + 35999.05030)*T + 357.52910
+    C = ((-0.000014*T - 0.004817)*T + 1.914600)*math.sin(math.radians(M))
+    C = C +(-0.000101*T - 0.019993)*math.sin(math.radians(2*M)) + 0.000290*math.sin(math.radians(3*M))
+    S_true_long = Lo + C
+    Lambda = S_true_long - 0.00569 - 0.00478*math.sin(math.radians(125.04 - 1934.136*T))
+    Lambda_cor = Lambda + 0.004419
+    x = math.degrees(math.atan(-math.cos(math.radians(Lambda_cor)) * math.tan(math.radians(23.440144))))
+    y = math.degrees(math.atan(-math.cos(math.radians(Lambda - K)) * math.tan(math.radians(I))))
+    P = x + y
+    Bo = math.degrees(math.asin(math.sin(math.radians(Lambda - K)) * math.sin(math.radians(I))))
+
+    return(str(round(P,2)),str(round(Bo,2)), str(L0), str(int(Rot_Carrington)))
 
 
 #from matt considine
@@ -330,21 +358,25 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     
     debug=False # les images
     debug1=False #les courbes
+    #print("crop...", crop)
    
     # au cas ou il fallait faire differament avec fort tilt
     if crop!=0:
         myimg_crop=myimg
         #myimg_crop=myimg[crop:-crop,:]
-        #print("crop...", crop)
+
     else:
         myimg_crop=myimg
         
     #detect si pas de limbes droits et/ou gauche  
     y1,y2=detect_bord (myimg_crop, axis=1,offset=0)    # bords verticaux
     x1,x2= detect_bord(myimg_crop,axis=0, offset=0)
+    #print("edge y1,y2 : ", y1, y2)
+    milieu=int(x1+(x2-x1)/2)
+    
     if crop >=100 : # fort tilt
         zexcl=0
-        milieu=int(x1+(x2-x1)/2)
+        #milieu=int(x1+(x2-x1)/2)
         sub_img1=myimg_crop[:,0:milieu]
         sub_img2=myimg_crop[:,milieu:-5]
         # bords vert gauche
@@ -352,7 +384,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         y1d,y2d=detect_bord (sub_img2, axis=1,offset=0)
         y1=min(y1g,y1d)
         y2=max(y2g,y2d)
-        print('y1,y2 crop', y1,y2, crop)
+        #print('y1,y2 crop', y1,y2, crop)
         
         
 
@@ -367,11 +399,15 @@ def detect_edge (myimg,zexcl, crop, disp_log):
    
     k=0
     s=[]
+    
+    ze1=ze # ajout 200?
+    ze2=ze # ajout 200?
 
+    
     #if crop!=0:
-        #print('zone : ',y1+ze, y2-ze)
+    #print('zone : ',y1+ze1, y2-ze2, ze1, ze2)
 
-    for i in range(y1+ze,y2-ze):
+    for i in range(y1+ze1,y2-ze2):
         li=np.copy(img_c[i,:-5])
         myli=np.copy(img_c[i,:-5])
         
@@ -396,7 +432,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
 
         
         if 2==1 :
-            if i in range(320, 323) or i in range (700,703):
+            if i in range(y1+ze1, y1+2+ze1) :
             #if x1 <2500 :
 
                 plt.plot(li)
@@ -419,7 +455,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         else:
             s=np.array([x1li,x2li])
             
-            if s.size !=0:
+            if s.size !=0 and (s[-1]-s[0])> 100:
                 c_x1=s[0]+offset
                 c_x2=s[-1]-offset
                 bord_gauche.append(c_x1)
@@ -434,10 +470,15 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     if debug :
         plt.imshow(myimg)
         # plot edges on image as red dots
-        a=bords[0]+bords[1]
-        b=bordsY[0]+bordsY[1]
-        plt.scatter(a,b,s=0.1, marker='.', edgecolors=('red'))
+        a1=bords[0]
+        b1=bordsY[0]
+        a2=bords[1]
+        b2=bordsY[1]
+        plt.title("bord 0 red - bord 1 yellow")
+        plt.scatter(a1,b1,s=0.1, marker='.', edgecolors=('red'))
+        plt.scatter(a2,b2,s=0.1, marker='.', edgecolors=('yellow'))
         plt.show()
+
     
     # elimine les points le long des bords haut et bas si disk pas entier
     # si on divise par continuum on n'exclue pas les bords de crop
@@ -466,13 +507,16 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         kk=1
         for k in range(0,len(gr_ex)-1) :   
             #if abs ((bords[i][kk]-bords[i][kk-1])/(bordsY[i][kk]-bordsY[i][kk-1])) > th :
-            if abs(gr_ex[k]) > th or bords[i][kk]<=abs(x1-100) or bords[i][kk]>=x2+100:
+            # ajoute filtrage ou un point bord droit est inférieur au mileu (cas protus)
+            if abs(gr_ex[k]) > th or bords[i][kk]<=abs(x1-100) or bords[i][kk]>=x2+100 or bords[i][kk] - (i*milieu) <=0 :
             #if abs(d[k]) > th :
                 #print("kk ",kk)
                 del bords[i][kk]
                 del bordsY[i][kk]
                 kk=kk-1
             kk=kk+1
+            
+        
     if debug :
         plt.imshow(myimg)
         # plot edges on image as red dots
@@ -490,17 +534,23 @@ def detect_edge (myimg,zexcl, crop, disp_log):
             #s = gaussian_filter1d(bords[i], 11)
             #sav = savgol_filter(bords[i], 301, 2)
             
+            # Test entre 5 et 6 
             p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],6)
+            #p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],5)
             fit=[]
             for y in bordsY[i] :
                 fitv = p[0]*y**6+p[1]*y**5+p[2]*y**4+p[3]*y**3+p[4]*y**2+p[5]*y+p[6]
+                #fitv = p[0]*y**5+p[1]*y**4+p[2]*y**3+p[3]*y**2+p[4]*y**1+p[5]
                 fit.append(fitv)
             #print('Coef poly ',p)
             fp = bords[i]-np.array(fit)
-            
             #f = bords[i]-s
             #fsav = bords[i]-sav
             
+
+            
+            clip=3
+        
             if debug1 :
                 plt.scatter(bordsY[i], bords[i], s=0.1,marker='.')
                 #plt.show()
@@ -511,7 +561,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
                 #plt.plot(f)
                 #plt.plot(fsav)
                 plt.plot(fp)
-                plt.hlines(3, 0, len(bords[i]))
+                plt.hlines(clip, 0, len(bords[i]), color="red")
                 plt.ylim((-20,20))
                 plt.show()
             
@@ -520,34 +570,72 @@ def detect_edge (myimg,zexcl, crop, disp_log):
             # attention a direction bords droit ou gauche
             for k in range(0,len(fp)-1) :   
                 if i==0 :
-                    if (fp[k]) < -3:
+                    if (fp[k]) < -clip:
                         #print("kk ",kk)
                         del bords[i][kk]
                         del bordsY[i][kk]
                         kk=kk-1
+                    #else:
+                        #bords[i][kk]=fit[k]
                     kk=kk+1
                 else:
-                    if (fp[k]) > 3 :
+                    if (fp[k]) > clip :
                         #print("kk ",kk)
                         del bords[i][kk]
                         del bordsY[i][kk]
                         kk=kk-1
+                    #else:
+                        #bords[i][kk]=fit[k]
                         
                     kk=kk+1
-            
+    
+    # avant fit polynomial
+   
+    if debug :
+        plt.imshow(myimg)
+        a1=bords[0]
+        b1=bordsY[0]
+        a2=bords[1]
+        b2=bordsY[1]
+        plt.title("bord 0 red - bord 1 yellow - avant poly")
+        plt.scatter(a1,b1,s=0.1, marker='.', edgecolors=('red'))
+        plt.scatter(a2,b2,s=0.1, marker='.', edgecolors=('yellow'))
+        plt.show()
+    
+    polyB=[]
+    polyY=[]
+    pB=[]
+    pY=[]               
+    for i in range(0,2)  :
+        # Test entre 5 et 6 
+        #p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],6)
+        p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],5)
+
+        for y in range(bordsY[i][5],bordsY[i][-5]) :
+            #fitv = p[0]*y**6+p[1]*y**5+p[2]*y**4+p[3]*y**3+p[4]*y**2+p[5]*y+p[6]
+            fitv = p[0]*y**5+p[1]*y**4+p[2]*y**3+p[3]*y**2+p[4]*y**1+p[5]
+            pB.append(fitv)
+            pY.append(y)
+        #print('Coef poly ',p)
+        polyB.append(pB)
+        polyY.append(pY)
+        bords[i]=polyB[i]
+        bordsY[i]=polyY[i]
+           
     # recombine bords droit et gauche
     edgeX=bords[0]+bords[1]
     edgeY=bordsY[0]+bordsY[1]
+
     
     X = np.array(list(zip(edgeX, edgeY)), dtype='float')  
    
-    
+   
     if debug :
         plt.imshow(myimg)
         # plot edges on image as red dots
         np_m=np.asarray(X)
         xm,ym=np_m.T
-        plt.title('filtre gradient et outliers continuum')
+        plt.title('filtre gradient et outliers continuum et fit polynomial')
         plt.scatter(xm,ym,s=0.1, marker='.', edgecolors=('red'))
         plt.show()
 
@@ -686,13 +774,15 @@ def auto_crop_img (cam_height, h,w, frame, cercle0, debug_crop, param):
         crop_force_largeur = 0
 
     ih=cam_height
-    asym_h = min(cercle0[1], h-cercle0[1])
+    # asym_h = min(cercle0[1], h-cercle0[1]) modif 31 dec 23 cause echec disque peu masqué
+    asym_h = min(cercle0[1], ih-cercle0[1])
     diam_sol = 2 *cercle0[2]
     
     if crop_force_hauteur != 0 :
         crop_he = crop_force_hauteur
     else :
-        crop_he = ih+100 # pour accomoder angle de tilt
+        #crop_he = ih+100 # pour accomoder angle de tilt
+        crop_he=ih
     
     # il faut changer les coordonnées du centre de cercle0
     centre_hor=cercle0[0]
@@ -702,14 +792,16 @@ def auto_crop_img (cam_height, h,w, frame, cercle0, debug_crop, param):
         #print("on ne centre pas en hauteur")
         if crop_force_largeur != 0 :
             crop_wi = crop_force_largeur
+            print("autocrop forced")
         else :
             # largeur image multiple de ih
-            if diam_sol+50 >= 2*ih :
-                #print("on prend largeur image a 3*ih", 3*ih)
+            # version 5.0 etait à 50
+            if diam_sol+100 >= 2*ih :
+                print("on prend largeur image a 3*ih", 3*ih)
                 crop_wi = ih*3
             else  :
-                if diam_sol +50 >=ih :
-                    #print("on prend largeur image a 2*ih",2*ih)
+                if diam_sol +100 >=ih :
+                    print("on prend largeur image a 2*ih",2*ih)
                     crop_wi = ih*2
                 else :
                     #print("on garde image carrée")
@@ -777,6 +869,7 @@ def auto_crop_img (cam_height, h,w, frame, cercle0, debug_crop, param):
     
     if debug_crop :
         if debug_crop:
+            print("cercle :", cercle0)
             print("hauteur cam",cam_height)
             print("hauteur image", h)
             print("asym_h", asym_h)

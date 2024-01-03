@@ -8,9 +8,27 @@ Version 20 mai 2021
 Front end de traitements spectro helio de fichier ser
 - interface pour selectionner un ou plusieurs fichiers
 - appel au module inti_recon qui traite la sequence et genere les fichiers fits
-
+- remplace appel meudon par gong
 
 -------------------------------------------------------------------------------
+Version 5.5 paris 28 decembre
+- ajout de 3 sous rep BASS2000, Clahe et Complements
+- ajout de disk stonyhurst et gestion disk non entier
+- calcul angle P, B0 en local
+- gestion ecran 4k
+- oriente grid si P=0 avec calcul en local
+- acquisition 8bits
+
+Version 5.3 paris 6 decembre
+- test si deux edges droit et gauche sont trop proches dans le cas d'une protuberances
+
+Version 5.2 paris 6 decembre
+- fit polynomiale pour edge - soleil partiel
+- refinement zone haute et basse pour image calcium
+
+Version 5.1 paris 12 nov
+- ajout mode auto ZEE_AUTOPOLY dans POl (magnetogramme)
+- gestion background améiorée pour image a fort diffusé (calcium)
 
 Version V4.1.8 paris 21 juillet 23 > V5.0
 - meilleure gestion background pour padding
@@ -215,11 +233,16 @@ import requests as rq
 import webbrowser as web
 import urllib.request
 from datetime import datetime 
-from serfilesreader.serfilesreader import Serfile
-#import time
-
+try :
+    from serfilesreader.serfilesreader import Serfile
+except ImportError : 
+    from serfilesreader import Serfile
+import stonyhurst as sth
 
 import PySimpleGUI as sg
+import ctypes
+ 
+
 
 # -------------------------------------------------------------
 global LG # Langue de l'interfacer (1 = FR ou 2 = US)
@@ -228,7 +251,7 @@ LG = 1
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V5.0.0 by V.Desnoux et.al. '
+current_version = 'Inti V5.5 by V.Desnoux et.al. '
 
 def get_lum_moyenne(img) :
     # ajout calcul intensité moyenne sur ROI centrée
@@ -286,6 +309,7 @@ def on_change_slider(x):
     cv2.imshow(source_window,cc)
 
 def get_sun_meudon (date_jd1):
+    # obsolete
     date_jd2=date_jd1+1
     r1="http://voparis-tap-helio.obspm.fr/__system__/tap/run/sync?LANG=ADQL&format=txt&"
     r2="request=doQuery&query=select%20access_url%20from%20bass2000.epn_core%20where%20time_min%20between%20"
@@ -502,11 +526,61 @@ def collapse(layout, key):
     """
     return sg.pin(sg.Column(layout, key=key))
 
+def UI_graph():
+    sg.set_options(dpi_awareness=True, scaling=screen_scale)
+ 
+    
+    if LG == 1 :
+        color_list=['Jaune', 'Noir']
+        c=color_list[0]
+        g=True
+        layout=[
+            [sg.Text('')],
+            [sg.Text('Couleur grille : '), sg.Combo(color_list,default_value=color_list[0], key='-GRID_COLOR-', enable_events=True)],
+            [sg.Text('')],
+            [sg.Checkbox('Graduations On', default=True,key='-GRADU_ON-',enable_events=True)],
+            [sg.Text('')],
+            [sg.Button('Ok',size=(20,1))]
+            ]
+        Title='Grille'
+    else :
+        color_list=['yellow', 'Black']
+        c=color_list[0]
+        g=True
+        layout=[
+            [sg.Text('')],
+            [sg.Text('Grid Color : '), sg.Combo(color_list,default_value=color_list[0], key='-GRID_COLOR-', enable_events=True)],
+            [sg.Text('')],
+            [sg.Checkbox('Graduations On', default=True,key='-GRADU_ON-',enable_events=True)],
+            [sg.Text('')],
+            [sg.Button('Ok', size=(20,1))]
+            ]
+        Title='Grid'
+    a,b=win_pos
+    win3_pos=(a+400, b+300)
+    window3 = sg.Window(Title, layout, location=win3_pos,finalize=True)
+
+    while True:
+        event, values = window3.read()
+
+        if event==sg.WIN_CLOSED or event=='Ok': 
+            break
+        else :
+            g=values['-GRADU_ON-']
+            c=values['-GRID_COLOR-']
+
+    window3.close()
+    
+    return c, g
 
 
 def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, poly, pos_free_blue, 
-                  pos_free_red,free_shift, zee_shift, win_pos, previous_serfile, data_entete,saved_angP,Flags, size_pix_cam, bin_cam):
+                  pos_free_red,free_shift, zee_shift, win_pos, previous_serfile, data_entete,saved_angP,Flags, size_pix_cam, bin_cam, screen_scale):
 
+    #sg.set_options(dpi_awareness=True)
+    sg.set_options(dpi_awareness=True, scaling=screen_scale)
+    
+    #sg.set_options(font="Arial, 10")
     sg.theme('Dark2')
     sg.theme_button_color(('white', '#500000'))
     #print('ui :', os.path.join(WorkDir,previous_serfile))
@@ -523,7 +597,19 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Racines=[]
     list_wave=[['Manual','Ha','Ha2cb','Cah','Cah1v','Cak','Cak1v','HeID3'],[0,6562.762,6561.432,3968.469,3966.968,3933.663,3932.163,5877.3]]
 
-    
+    if LG == 1 :
+        colonne0=[
+            [sg.Checkbox(' Inversion E-W', default=Flags['FLIPRA'], key='-RA_FLIP-')],
+            [sg.Checkbox(' Inversion N-S', default=Flags['FLIPNS'], key='-NS_FLIP-')]
+            ]
+        colonne1=[[sg.Button('Grille', key='Graph')]]
+    else :
+        colonne0=[
+            [sg.Checkbox(' E-W flip', default=Flags['FLIPRA'], key='-RA_FLIP-')],
+            [sg.Checkbox(' N-S flip', default=Flags['FLIPNS'], key='-NS_FLIP-')]
+            ]
+        colonne1=[[sg.Button('Grid', key='Graph')]]
+        
     if LG == 1:
         section1 = [
                 [sg.Checkbox(' Affichage de la reconstruction en temps réel ', default=False, key='-DISP-')],
@@ -561,14 +647,12 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 [sg.Text('Longueur d\'onde :', size=(12,1)), sg.Combo(list_wave[0], default_value=list_wave[0][0], size=(10,1),key='-WAVE-',enable_events=True),
                  sg.Text(list_wave[1][0], key='-WAVEVAL-')],
                 [sg.Text('Date et heure :',size=(12,1)),sg.Input(default_text='', size=(26,1),key='-DATEOBS-'),
-                     sg.Button('Date', key='-GETDATE-'),sg.Button('Meudon', key='-CLIMSO-'),
+                     sg.Button('Date', key='-GETDATE-'),sg.Button('Gong', key='-CLIMSO-'),
                      sg.Text('BASS2000', key='-BASS-', enable_events=True, font="None 9 italic underline"), 
                      sg.Text('NSO', key='-NSO-',enable_events=True, font="None 9 italic underline")],
                 [sg.Text('Angle P :', size=(12,1)), sg.Input(default_text=saved_angP, size=(10,1),key='-ANGP-'), 
                  sg.Text("Nord en haut, Est à gauche, angle P positif vers l\'Est"), sg.Button('KSO',key='-KSO-')],
-                [sg.Checkbox(' Inversion E-W', default=Flags['FLIPRA'], key='-RA_FLIP-')],
-                [sg.Checkbox(' Inversion N-S', default=Flags['FLIPNS'], key='-NS_FLIP-')]
-            
+                [sg.Column(colonne0, size=(400,100)),sg.Column(colonne1, vertical_alignment='Top') ]
                 ]
     else:
         section2 = [
@@ -581,15 +665,12 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 [sg.Text('Wavelength :', size=(12,1)), sg.Combo(list_wave[0], default_value=list_wave[0][0], size=(10,1),key='-WAVE-',enable_events=True), 
                  sg.Text(list_wave[1][0], key='-WAVEVAL-')],
                 [sg.Text('Date and time :',size=(12,1)),sg.Input(default_text='', size=(26,1),key='-DATEOBS-'),
-                     sg.Button('Date', key='-GETDATE-'),sg.Button('Meudon', key='-CLIMSO-'),
+                     sg.Button('Date', key='-GETDATE-'),sg.Button('Gong', key='-CLIMSO-'),
                      sg.Text('BASS2000', key='-BASS-', enable_events=True, font="None 9 italic underline"), 
                      sg.Text('NSO', key='-NSO-',enable_events=True, font="None 9 italic underline")],
                 [sg.Text('P Angle :', size=(12,1)), sg.Input(default_text=saved_angP, size=(10,1),key='-ANGP-'), 
                  sg.Text("North up, Est left, P angle positive towards Est"), sg.Button('KSO',key='-KSO-')],
-                [sg.Checkbox(' E-W flip', default=Flags['FLIPRA'], key='-RA_FLIP-')],
-                [sg.Checkbox(' N-S flip', default=Flags['FLIPNS'], key='-NS_FLIP-')]
-                
-                
+                [sg.Column(colonne0, size=(400,100)),sg.Column(colonne1, vertical_alignment='Top') ]               
                 ]
       
     if LG == 1:
@@ -624,6 +705,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         tab4_layout =[
             # zeeman
             [sg.Text("")],
+            [sg.Checkbox('Polynome automatique', default=Flags["ZEE_AUTOPOLY"], key='-ZEE_AUTOPOLY-')],
             [sg.Text('Coefficient polynome forme fente : ',size=(24,1)),sg.Input(default_text="{:.4e}".format(poly[0]),size=(12,1),key='a'), sg.Text('* x**2 +'),
              sg.Input(default_text="{:.4e}".format(poly[1]),size=(12,1),key='b'), sg.Text('* x')],
             [sg.Text('Constante :'),sg.Input(default_text="{:.2f}".format(poly[2]),size=(6,1),key='c'),
@@ -687,6 +769,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         tab4_layout =[
             #[sg.Checkbox(' Zeeman ', default=False, key='-POL-')],
             [sg.Text("")],
+            [sg.Checkbox('Automatic polynome', default=Flags["FREE_AUTOPOLY"], key='-FREE_AUTOPOLY-')],
             [sg.Text('Polynom terms of slit distorsion : ',size=(24,1)),sg.Input(default_text="{:.4e}".format(poly[0]),size=(12,1),key='a'), sg.Text('* x**2 + '),
              sg.Input(default_text="{:.4e}".format(poly[1]),size=(12,1),key='b'), sg.Text('* x')],
             [sg.Text('Constante :'),sg.Input(default_text="{:.2f}".format(poly[2]),size=(6,1),key='c'),
@@ -705,7 +788,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         tab5_layout =[
             #[sg.Checkbox(' Free line ', default=False, key='-WEAK-')],
             [sg.Text("")],
-            [sg.Checkbox('Automatic polynome', default=Flags["FREE_AUTOPOLY"], key='-FREE_AUTOPOLY-')],
+            [sg.Checkbox('Automatic polynome', default=Flags["ZEE_AUTOPOLY"], key='-ZEE_AUTOPOLY-')],
             [sg.Text('Polynom terms of slit distorsion : ',size=(24,1)),sg.Input(default_text="{:.4e}".format(poly[0]),size=(12,1),key='fa'), sg.Text('* x**2 +'),
              sg.Input(default_text="{:.4e}".format(poly[1]),size=(12,1),key='fb'), sg.Text('* x')],
             [sg.Text('Constante :'),sg.Input(default_text="{:.2f}".format(poly[2]),size=(6,1),key='fc'),sg.Text('Base Shift :'),sg.Input(default_text=free_shift,size=(5,1),key='-FREE_SHIFT-')],
@@ -733,7 +816,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             ]
     else:
         layout = [
-            [sg.Text('File(s) :', size=(5, 1)), sg.InputText(default_text='',size=(70,1),enable_events=True,key='-FILE-'),
+            [sg.Text('File(s) :', size=(7, 1)), sg.InputText(default_text='',size=(70,1),enable_events=True,key='-FILE-'),
              sg.FilesBrowse(' Open ',file_types=(("SER Files", "*.ser"),),initial_folder=os.path.join(WorkDir,previous_serfile))],
             
             [sg.TabGroup([[sg.Tab('  General  ', tab1_layout), sg.Tab('Doppler & Continuum', tab2_layout,), 
@@ -753,10 +836,13 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     
     window['-FILE-'].update(os.path.join(WorkDir,previous_serfile)) 
     window.BringToFront()
+    #dpi=window.TKroot.winfo_fpixels('1i')
+    #print('dpi',dpi)
     Flag_sortie=False
     wavelength_found=list_wave[1][0]
     solar_dict={}
-
+    grid_graph={'color_grid':'yellow', 'gradu_on': True}
+    
     
     while True:
         event, values = window.read()
@@ -923,6 +1009,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 reponse_web=rq.get(webservice)
                 #print(reponse_web.text)
                 window['-ANGP-'].update("{:+.3f}".format(float(reponse_web.text)))
+                KSO_P="{:+.3f}".format(float(reponse_web.text))
                 # autres services 
                 webservice='https://www.kso.ac.at/beobachtungen/ephem_api.php?date='+date_obs+'&time='+heure_obs+'&lat='+str_site_lat+'&lon='+str_site_long+"&B0&Lon&Carr"
                 #print(webservice)
@@ -931,6 +1018,15 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 solar_dict['B0']=solar_data[0]
                 solar_dict['L0']=solar_data[1]
                 solar_dict['Carr']=solar_data[2]
+                print('Angle B0 : ', str(solar_data[0]))
+                P,B0,L0, Rot_Carr=angle_P_B0 (fits_dateobs)
+                """
+                print('Angle P : ', KSO_P)
+                print('Angle B0 : ', str(solar_data[0]))
+                P,B0=angle_P_B0 (fits_dateobs)
+                print('Angle P : ', str(P))
+                print('Angle B0 : ', str(B0))
+                """
                 
             except:
                 if LG==1 :
@@ -943,6 +1039,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             #date_obs='20211213'
             fits_dateobs=values['-DATEOBS-']
             if fits_dateobs!='' :
+                """
                 date_obs=fits_dateobs.split('T')[0].replace('-','')
                 s=date_obs
                 my_date = datetime.strptime(s, fmt)
@@ -967,7 +1064,20 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                     print('no file found around this date')
                 else:
                     print('Meudon Spectro Halpha at closest date : ',sun_meudon)
-                    
+                """
+
+                datemonth=fits_dateobs.split('T')[0].replace('-','')[:6]
+                dateday=fits_dateobs.split('T')[0].replace('-','')
+                r1="https://gong2.nso.edu/HA/hag/"+datemonth+"/"+dateday+"/"
+                Vo_req=r1
+
+                reponse_web=rq.get(Vo_req)
+                sun_meudon=reponse_web.text.split("\n")
+                t=sun_meudon[11].split('href=')[1].split(">")[0]
+                t=t.replace('"','')
+                web.open(r1+t)
+                
+                
                 # recupère le nom du fichier en cours
                 base=os.path.basename(values['-FILE-'])
                 basefich=os.path.splitext(base)[0]
@@ -976,7 +1086,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 
                 if basefich!='':
                     # contruit le nom du fichier _clahe.png 
-                    myimage=curr_dir+'/_'+basefich+'_clahe.png'
+                    myimage=curr_dir+'/Clahe/_'+basefich+'_clahe.png'
                     # affiche le fichier si il existe
                     if os.path.exists(myimage):
                         web.open(myimage)
@@ -986,6 +1096,14 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             
         if event=='-BASS-':
             web.open('https://bass2000.obspm.fr/home.php')
+            
+        if event == 'Graph' :
+            grid_graph['color_grid'], grid_graph['gradu_on'] = UI_graph()
+            if LG==1 :
+                if grid_graph['color_grid']=='Jaune' :
+                    grid_graph['color_grid']='Yellow'
+                if grid_graph['color_grid']=='Noir' :
+                    grid_graph['color_grid']='Black'  
 
 
     window.close()
@@ -1017,7 +1135,8 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Flags["FORCE"] = values["-F_ANG_SXSY-"]
     Flags["SAVEPOLY"] = values["-SAVEPOLY-"]
     Flags["NOISEREDUC"] = values["-NOISEREDUC-"]    
-    Flags["FREE_AUTOPOLY"] = values["-FREE_AUTOPOLY-"] 
+    Flags["FREE_AUTOPOLY"] = values["-FREE_AUTOPOLY-"]
+    Flags["ZEE_AUTOPOLY"] = values["-ZEE_AUTOPOLY-"] 
     
    # print(Flags)
     
@@ -1093,7 +1212,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     
 
     
-    return FileNames, Shift, Flags, ratio_fixe,ang_tilt, poly, Racines, Data_entete,ang_P, solar_dict, size_pix_cam, bin_cam
+    return FileNames, Shift, Flags, ratio_fixe,ang_tilt, poly, Racines, Data_entete,ang_P, solar_dict, size_pix_cam, bin_cam, grid_graph
 
 """
 -------------------------------------------------------------------------------------------
@@ -1109,15 +1228,36 @@ global mouse_x, mouse_y
 mouse_x,mouse_y=0,0
 global img_data
 
-
 # gestion dynamique de la taille ecran
-screen = tk.Tk()
-screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()
-screen.destroy()
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2) # if your windows version >= 8.1
+except:
+    ctypes.windll.user32.SetProcessDPIAware() # win 8.0 or less 
 
-#print(screensize)
+screen = tk.Tk()
+scw,sch = screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()
+#dpi=screen.winfo_fpixels('1i')
+#print('screen DPI', dpi)
+screen.destroy()
+#print('screen size', screensize)
 
 while not Flag_sortie :
+    
+    
+    
+    
+    if sch >1500 :
+        # on a moniteur 4k
+        screen_scale = 3
+        screen_scaleZ=2
+    else:
+        screen_scale = 1.5 
+        screen_scaleZ=2
+        
+    if sch<=800 :
+        screen_scale = 1
+        screen_scaleZ=1
+
     
     # inti.yaml is a bootstart file to read last directory used by app
     # this file is stored in the module directory
@@ -1128,7 +1268,7 @@ while not Flag_sortie :
                 'size_pix_cam':'0.0024', 'bin_cam':'1',
                 'poly_slit_a':0, "poly_slit_b":0,'poly_slit_c':0, 
                 'ang_tilt':0, 'ratio_sysx':1,
-                'free_autpoly':0, 'poly_free_a':0,'poly_free_b':0,'poly_free_c':0,
+                'free_autpoly':0, 'zee_autpoly':0,'poly_free_a':0,'poly_free_b':0,'poly_free_c':0,
                 'pos_free_blue':0, 'pos_free_red':0, 'free_shift':0,
                 'force_free_magn': False,
                 'win_posx':300, 'win_posy':200, 'observer':'', 'instru':'','site_long':0, 'site_lat':0,
@@ -1203,6 +1343,12 @@ while not Flag_sortie :
         Flags['FREE_AUTOPOLY']=0
     else:
         Flags['FREE_AUTOPOLY']=my_dictini['free_autopoly']
+    
+    if 'zee_autopoly' not in my_dictini:
+        my_dictini['zee_autopoly']=0
+        Flags['ZEE_AUTOPOLY']=0
+    else:
+        Flags['ZEE_AUTOPOLY']=my_dictini['zee_autopoly']
         
     if 'free_shift' not in my_dictini:
         my_dictini['free_shift'] = 0 #decalage en mode zeeman
@@ -1242,12 +1388,13 @@ while not Flag_sortie :
                  my_dictini['wavelength'],my_dictini['wave_label']]
     
     
+    
     # Recupere paramatres de la boite de dialogue
     #print('serfile previous : ', previous_serfile)
-    serfiles, Shift, Flags, ratio_fixe,ang_tilt, poly, racines, data_entete,ang_P,solar_dict, size_pix_cam, bin_cam= UI_SerBrowse(WorkDir, saved_tilt, saved_ratio,
+    serfiles, Shift, Flags, ratio_fixe,ang_tilt, poly, racines, data_entete,ang_P,solar_dict, size_pix_cam, bin_cam, grid_graph= UI_SerBrowse(WorkDir, saved_tilt, saved_ratio,
                                                                              dec_pix_dop, dec_pix_cont, poly,pos_free_blue, pos_free_red,free_shift,zee_shift,
                                                                              win_pos, previous_serfile, data_entete,saved_angP, Flags,
-                                                                             size_pix_cam, bin_cam)
+                                                                             size_pix_cam, bin_cam, screen_scale)
     serfiles=serfiles.split(';')
     #print('serfile : ',  len(serfiles))
     if len(serfiles)==1 :
@@ -1256,6 +1403,7 @@ while not Flag_sortie :
         #print('serfile previous : ', previous_serfile)
     ii=1
     Flag_sortie=Flags["sortie"]
+
     
     # pour gerer la tempo des affichages des images resultats dans cv2.waitKey
     # si plusieurs fichiers à traiter
@@ -1278,6 +1426,17 @@ while not Flag_sortie :
         
         WorkDir=os.path.dirname(serfile)+"/"
         os.chdir(WorkDir)
+        # Creation des trois sous-repertoires 
+        subrep=WorkDir+'BASS2000'
+        if not os.path.isdir(subrep):
+           os.makedirs(subrep)
+        subrep=WorkDir+'Clahe'
+        if not os.path.isdir(subrep):
+           os.makedirs(subrep)
+        subrep=WorkDir+'Complements'
+        if not os.path.isdir(subrep):
+           os.makedirs(subrep)
+        # extrait nom racine
         base=os.path.basename(serfile)
         basefich=os.path.splitext(base)[0]
         if base=='':
@@ -1375,6 +1534,11 @@ while not Flag_sortie :
         #t0=time.time()
         base=os.path.basename(serfile)
         basefich='_'+os.path.splitext(base)[0]
+        basefich_comple="Complements"+os.path.sep+basefich
+        basefich_bass="BASS2000"+os.path.sep+basefich
+        basefich_clahe="Clahe"+os.path.sep+basefich
+        #print(basefich_comple, basefich_bass, basefich_clahe)
+        
 
         
         ih = frames[0].shape[0]
@@ -1399,18 +1563,16 @@ while not Flag_sortie :
         nw = screensizeW/newiw
         nh = screensizeH/ih
         sc=min(nw,nh)
-        
-        if sc >= 1 :
-            sc = 1
+
         
         # Lecture et affiche image disque brut
         if range_dec[0]==0 :
             if Shift[0] ==0 :
-                ImgFile=basefich+'_raw.fits'   
+                ImgFile=basefich_comple+'_raw.fits'   
             else :
-                ImgFile=basefich+'_dp'+str(int(Shift[0]))+'_raw.fits'
+                ImgFile=basefich_comple+'_dp'+str(int(Shift[0]))+'_raw.fits'
         else:
-            ImgFile=basefich+'_dp'+str(range_dec[0])+'_raw.fits'
+            ImgFile=basefich_comple+'_dp'+str(range_dec[0])+'_raw.fits'
         
         hdulist = fits.open(ImgFile, memmap=False)
         hdu=hdulist[0]
@@ -1439,6 +1601,8 @@ while not Flag_sortie :
         
         
         # prepare fenetres pour affichage des images
+        # variable top_w gere en fait la position horizonatale
+        # left_w la position verticale
         cv2.namedWindow('Raw', cv2.WINDOW_NORMAL)
         cv2.moveWindow('Raw', top_w, left_w)
         cv2.resizeWindow('Raw', (int(riw*sc), int(rih*sc)))
@@ -1462,13 +1626,14 @@ while not Flag_sortie :
         cv2.moveWindow('clahe', top_w, left_w)
         cv2.resizeWindow('clahe',(int(newiw*sc), int(ih*sc)))
         
+        
               
         
         # ne fait un zoom que si on traite un seul fichier et pas doppler/continuum
         if len(frames)==1 and len(serfiles)==1:
             cv2.namedWindow('Zoom', cv2.WINDOW_NORMAL)
-            cv2.resizeWindow('Zoom', 300, 300)
-            cv2.moveWindow('Zoom',20,20)
+            cv2.moveWindow('Zoom', lw,5*lw)
+            cv2.resizeWindow('Zoom', int(300*screen_scaleZ), int(300*screen_scaleZ))
             #
             cv2.namedWindow('sliders', cv2.WINDOW_AUTOSIZE)
             cv2.moveWindow('sliders', int(top_w*1.3), 0)
@@ -1492,7 +1657,7 @@ while not Flag_sortie :
         #print('seuil bas', Seuil_bas)
         #print('seuil haut', Seuil_haut)
         
-        fc=(frame1-Seuil_bas)* (65000/(Seuil_haut-Seuil_bas))
+        fc=(frame1-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
         fc[fc<0]=0
         frame_contrasted=np.array(fc, dtype='uint16')
         if len(frames)==1 and len(serfiles)==1:
@@ -1525,7 +1690,7 @@ while not Flag_sortie :
         Disk2=cv2.flip(Disk2,0)
         cv2.imshow('Raw',Disk2)
         
-        # image seuils serres 
+        # image seuils protus 
         frame1=np.copy(frames[0])
         sub_frame=frame1[5:,:-5]
         Seuil_haut=np.percentile(sub_frame,99.999)
@@ -1695,9 +1860,9 @@ while not Flag_sortie :
                         img_doppler[:,:,1] = i2
                         img_doppler[:,:,2] = i1
                     else :
-                        img_doppler[:,:,0] = i1
-                        img_doppler[:,:,1] = i2
-                        img_doppler[:,:,2] = i3
+                        img_doppler[:,:,0] = i1 # blue
+                        img_doppler[:,:,1] = i2 # green
+                        img_doppler[:,:,2] = i3 # red
                     img_doppler=cv2.flip(img_doppler,0)
                     cv2.imshow('doppler',img_doppler)
                
@@ -1788,7 +1953,7 @@ while not Flag_sortie :
         if range_dec[0]==0:
             img_suffix=""
             #print(basefich+img_suffix+'_raw.png')
-            cv2.imwrite(basefich+img_suffix+'_raw.png',Disk2)
+            cv2.imwrite(basefich_comple+img_suffix+'_raw.png',Disk2)
         else:
             img_suffix="_dp"+str(range_dec[0])
             
@@ -1798,21 +1963,63 @@ while not Flag_sortie :
 
         if Flags["POL"] != True  and  Flags["WEAK"] != True :      
             #print(base_filename+'.jpg')
-            cv2.imwrite(base_filename+'.jpg',frame_contrasted*0.0038)
+            cv2.imwrite("BASS2000"+os.path.sep+base_filename+'.jpg',frame_contrasted*0.0038)
             #print(base_filename+'_protus.jpg')
-            cv2.imwrite(base_filename+'_protus.jpg',frame_contrasted3*0.0038)
-        
+            cv2.imwrite("BASS2000"+os.path.sep+base_filename+'_protus.jpg',frame_contrasted3*0.0038)
+            
+            # genere image avec stonyhurtdisk
+            nomfich=basefich+img_suffix+'_disk.png'
+            nomrep1=WorkDir
+            nomrep2=WorkDir+"BASS2000"+os.path.sep
+            fich_param={}
+            graph_param={}
+            fich_param['date'] = header['DATE-OBS']
+            #hdr['SEP_LAT']=float(solar_dict['B0'])
+            #hdr['SEP_LON']=float(solar_dict['L0'])
+            #hdr['SOLAR_P']=float(ang_P)
+            #hdr['CAR_ROT']=float(solar_dict['Carr'])
+            fich_param['P']=0
+            fich_param['PDisp']=0
+            grid_on=True
+            if grid_on :
+                try :
+                    fich_param['P'] = header['SOLAR_P']  # Only for display, INTI puts heliographic pole on top
+                except:
+                    fich_param['PDisp'],a,b,c=angle_P_B0 (fich_param['date'] )
+                try :
+                    fich_param['B0'] = float(header['SEP_LAT'])
+                except:
+                    a, fich_param['B0'],b,c=angle_P_B0 (fich_param['date'] )
+                    #print('B0: ', fich_param['B0'])
+                    fich_param['B0']=float(fich_param['B0'])
+                    
+                fich_param['xcc'] = x0
+                
+                if y0<ih or y0>ih :
+                    fich_param['ycc'] = ih-y0
+                else :
+                    fich_param['ycc'] = y0
+                fich_param['radius'] = r
+    
+                graph_param['gradu'] = grid_graph['gradu_on']
+                graph_param['opacity'] = 0.5
+                graph_param['lwidth'] = 0.2
+                graph_param['color'] = grid_graph['color_grid']
+                graph_param['color_inv'] = 'black'
+                graph_param['disp']=False
+                
+                sth.draw_stonyhurst(nomrep1, nomrep2,nomfich, fich_param, graph_param)
         
         #sauvegarde en png seuils protus
         cv2.imwrite(basefich+img_suffix+'_protus.png',frame_contrasted3)
         
         #sauvegarde en png seuils serrés
         #print(basefich+img_suffix+'_diskHC.png')
-        cv2.imwrite(basefich+img_suffix+'_diskHC.png',frame_contrasted2)
+        #cv2.imwrite(basefich+img_suffix+'_diskHC.png',frame_contrasted2)
 
         #sauvegarde en png de clahe
         #print(basefich+img_suffix+'_clahe.png')
-        cv2.imwrite(basefich+img_suffix+'_clahe.png',cc)
+        cv2.imwrite(basefich_clahe+img_suffix+'_clahe.png',cc)
         
         
         # sauve les png multispectraux et cree une video
@@ -1958,18 +2165,20 @@ while not Flag_sortie :
             frame2=np.copy(img_weak_array)
             DiskHDU=fits.PrimaryHDU(frame2,header)
             DiskHDU.writeto(basefich+'_free.fits', overwrite='True')
+            if len(serfiles)>1 :
+                DiskHDU.writeto(basefich+'_free-'+str(ii)+'.fits', overwrite='True')
             frame3=np.copy(img_diff)
             DiskHDU=fits.PrimaryHDU(frame3,header)
-            DiskHDU.writeto(basefich+'_diff.fits', overwrite='True')
+            DiskHDU.writeto(basefich_comple+'_diff.fits', overwrite='True')
             # sauve les images individuelles pour debug
             DiskHDU=fits.PrimaryHDU(fr0,header)
-            DiskHDU.writeto(basefich+'_x0.fits', overwrite='True')
+            DiskHDU.writeto(basefich_comple+'_x0.fits', overwrite='True')
             DiskHDU=fits.PrimaryHDU(fr1,header)
-            DiskHDU.writeto(basefich+'_x1.fits', overwrite='True')
+            DiskHDU.writeto(basefich_comple+'_x1.fits', overwrite='True')
             DiskHDU=fits.PrimaryHDU(fr2,header)
-            DiskHDU.writeto(basefich+'_x2.fits', overwrite='True')
+            DiskHDU.writeto(basefich_comple+'_x2.fits', overwrite='True')
             DiskHDU=fits.PrimaryHDU(moy,header)
-            DiskHDU.writeto(basefich+'_sum.fits', overwrite='True')
+            DiskHDU.writeto(basefich_comple+'_sum.fits', overwrite='True')
             
         else:
             """
@@ -1982,7 +2191,7 @@ while not Flag_sortie :
             # image difference en fits
             frame3=np.copy(img_diff)
             DiskHDU=fits.PrimaryHDU(frame3,header)
-            DiskHDU.writeto(basefich+'_diff.fits', overwrite='True')
+            DiskHDU.writeto(basefich_comple+'_diff.fits', overwrite='True')
             # renomme les dp fits en r et b
             ImgFileb=basefich+'_dp'+str(range_dec[1])+'_recon.fits'
             ImgFiler=basefich+'_dp'+str(range_dec[2])+'_recon.fits'
@@ -2006,7 +2215,10 @@ while not Flag_sortie :
             hdr_vol['CUNIT3']='Angstrom'
             # insert fullprofile dans le nom
             a=header['FILENAME'].split('SOLEX')
-            filename_3D=a[0]+'SOLEX_fullprofile'+a[1]
+            try :
+                filename_3D=a[0]+'SOLEX_fullprofile'+a[1]
+            except:
+                filename_3D=a[0]+'SOLEX_fullprofile.fits'
             hdr_vol['FILENAME']=filename_3D
             #print(hdr_vol['FILENAME'])
             hdr_vol['CDELT3']=0.155
