@@ -11,6 +11,10 @@ Front end de traitements spectro helio de fichier ser
 - remplace appel meudon par gong
 
 -------------------------------------------------------------------------------
+Version 5.6 paris 6 janvier 2024
+- bug fix :ajout test os si pas windows pour detection taille ecran
+- ajout d'un override avec param screen_scale dans inti.yaml
+
 Version 5.5 paris 28 decembre
 - ajout de 3 sous rep BASS2000, Clahe et Complements
 - ajout de disk stonyhurst et gestion disk non entier
@@ -246,7 +250,7 @@ import ctypes
 
 # -------------------------------------------------------------
 global LG # Langue de l'interfacer (1 = FR ou 2 = US)
-LG = 1
+LG = 2
 # -------------------------------------------------------------
 
 SYMBOL_UP =    '▲'
@@ -528,7 +532,6 @@ def collapse(layout, key):
 
 def UI_graph():
     sg.set_options(dpi_awareness=True, scaling=screen_scale)
- 
     
     if LG == 1 :
         color_list=['Jaune', 'Noir']
@@ -1018,7 +1021,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 solar_dict['B0']=solar_data[0]
                 solar_dict['L0']=solar_data[1]
                 solar_dict['Carr']=solar_data[2]
-                print('Angle B0 : ', str(solar_data[0]))
+                #print('Angle B0 : ', str(solar_data[0]))
                 P,B0,L0, Rot_Carr=angle_P_B0 (fits_dateobs)
                 """
                 print('Angle P : ', KSO_P)
@@ -1228,11 +1231,13 @@ global mouse_x, mouse_y
 mouse_x,mouse_y=0,0
 global img_data
 
-# gestion dynamique de la taille ecran
-try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2) # if your windows version >= 8.1
-except:
-    ctypes.windll.user32.SetProcessDPIAware() # win 8.0 or less 
+
+if sys.platform=="win32&" :
+    # gestion dynamique de la taille ecran
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2) # if your windows version >= 8.1
+    except:
+        ctypes.windll.user32.SetProcessDPIAware() # win 8.0 or less 
 
 screen = tk.Tk()
 scw,sch = screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()
@@ -1242,9 +1247,6 @@ screen.destroy()
 #print('screen size', screensize)
 
 while not Flag_sortie :
-    
-    
-    
     
     if sch >1500 :
         # on a moniteur 4k
@@ -1257,7 +1259,7 @@ while not Flag_sortie :
     if sch<=800 :
         screen_scale = 1
         screen_scaleZ=1
-
+    
     
     # inti.yaml is a bootstart file to read last directory used by app
     # this file is stored in the module directory
@@ -1271,7 +1273,7 @@ while not Flag_sortie :
                 'free_autpoly':0, 'zee_autpoly':0,'poly_free_a':0,'poly_free_b':0,'poly_free_c':0,
                 'pos_free_blue':0, 'pos_free_red':0, 'free_shift':0,
                 'force_free_magn': False,
-                'win_posx':300, 'win_posy':200, 'observer':'', 'instru':'','site_long':0, 'site_lat':0,
+                'win_posx':300, 'win_posy':200, 'screen_scale':0,'observer':'', 'instru':'','site_long':0, 'site_lat':0,
                 'angle P':0,'contact':'','wavelength':0, 'wave_label':'Manuel', 'inversion NS':0, 'inversion EW':0,
                 'autocrop':1, 'pos fente min':0, 'pos fente max':0,'crop fixe hauteur':0, 'crop fixe largeur':0,
                 "zeeman_shift":0, "reduction bruit":0}
@@ -1381,6 +1383,15 @@ while not Flag_sortie :
     if 'pos fente max' not in my_dictini:
         my_dictini['pos fente max']='0'
         
+    # param echelle UI ecran override mode auto
+    if 'screen_scale' not in my_dictini:
+        my_dictini['screen_scale']='0'
+    else :
+        if int(my_dictini['screen_scale'])!=0 :
+            screen_scale=float(my_dictini['screen_scale'])
+            if screen_scale >= 1 :      
+                screen_scaleZ=2     # facteur de zoom
+        
     
     param=[my_dictini['pos fente min'],my_dictini['pos fente max'],my_dictini['crop fixe hauteur'],my_dictini['crop fixe largeur']]
     win_pos=(w_posx,w_posy)
@@ -1482,6 +1493,7 @@ while not Flag_sortie :
         my_dictini['force_free_magn'] = Flags["FORCE_FREE_MAGN"]
         my_dictini['zeeman_shift'] = Shift[4]
         my_dictini['reduction_bruit'] = Flags['NOISEREDUC']
+        my_dictini['screen_scale'] = screen_scale
         
         if Flags['WEAK']:
             my_dictini['free_autopoly']=Flags['FREE_AUTOPOLY']
