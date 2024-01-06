@@ -531,7 +531,10 @@ def collapse(layout, key):
     return sg.pin(sg.Column(layout, key=key))
 
 def UI_graph():
-    sg.set_options(dpi_awareness=True, scaling=screen_scale)
+    if sys.platform=="win32" :
+        sg.set_options(dpi_awareness=True, scaling=screen_scale)
+    else:
+        sg.set_options(scaling=screen_scale)
     
     if LG == 1 :
         color_list=['Jaune', 'Noir']
@@ -580,8 +583,10 @@ def UI_graph():
 def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, poly, pos_free_blue, 
                   pos_free_red,free_shift, zee_shift, win_pos, previous_serfile, data_entete,saved_angP,Flags, size_pix_cam, bin_cam, screen_scale):
 
-    #sg.set_options(dpi_awareness=True)
-    sg.set_options(dpi_awareness=True, scaling=screen_scale)
+    if sys.platform=="win32" :
+        sg.set_options(dpi_awareness=True, scaling=screen_scale)
+    else:
+        sg.set_options(scaling=screen_scale)
     
     #sg.set_options(font="Arial, 10")
     sg.theme('Dark2')
