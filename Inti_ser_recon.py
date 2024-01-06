@@ -255,7 +255,7 @@ LG = 2
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V5.5 by V.Desnoux et.al. '
+current_version = 'Inti V5.6 by V.Desnoux et.al. '
 
 def get_lum_moyenne(img) :
     # ajout calcul intensité moyenne sur ROI centrée
