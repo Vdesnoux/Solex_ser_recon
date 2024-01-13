@@ -11,6 +11,11 @@ Front end de traitements spectro helio de fichier ser
 - remplace appel meudon par gong
 
 -------------------------------------------------------------------------------
+version 13 janvier 2024
+- modif autocrop padding a droite
+- test mode seuil inversé
+- ajout image seuils inversés _inv
+
 Version 5.6 paris 6 janvier 2024
 - bug fix :ajout test os si pas windows pour detection taille ecran
 - ajout d'un override avec param screen_scale dans inti.yaml
@@ -1977,6 +1982,12 @@ while not Flag_sortie :
         #sauvegarde en png disk quasi seuils max
         #print(basefich+img_suffix+'_disk.png')
         cv2.imwrite(basefich+img_suffix+'_disk.png',frame_contrasted)
+        frame_sub=65535-frame_contrasted
+        cv2.imwrite(basefich+img_suffix+'_inv.png',frame_sub)
+        # test mix mais c'est moche...
+        #frame_combo=np.maximum(frame_contrasted3, frame_contrasted)
+        #frame_combo[frame_combo==65535]=0
+        #cv2.imwrite(basefich+img_suffix+'_mix.png',frame_combo)
 
         if Flags["POL"] != True  and  Flags["WEAK"] != True :      
             #print(base_filename+'.jpg')

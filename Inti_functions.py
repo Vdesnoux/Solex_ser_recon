@@ -21,6 +21,9 @@ import math
 #import imutils
 
 """
+version du 13 janvier 2024
+- modif autocrop padding a droite
+
 version V4.1.2 du 8 juiller 2023
 - ajout detection outlier avec polynome
 - gestion seuil haut = seuil bas dans seuil_force
@@ -608,12 +611,12 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     pY=[]               
     for i in range(0,2)  :
         # Test entre 5 et 6 
-        #p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],6)
-        p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],5)
+        p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],6)
+        #p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],5)
 
         for y in range(bordsY[i][5],bordsY[i][-5]) :
-            #fitv = p[0]*y**6+p[1]*y**5+p[2]*y**4+p[3]*y**3+p[4]*y**2+p[5]*y+p[6]
-            fitv = p[0]*y**5+p[1]*y**4+p[2]*y**3+p[3]*y**2+p[4]*y**1+p[5]
+            fitv = p[0]*y**6+p[1]*y**5+p[2]*y**4+p[3]*y**3+p[4]*y**2+p[5]*y+p[6]
+            #fitv = p[0]*y**5+p[1]*y**4+p[2]*y**3+p[3]*y**2+p[4]*y**1+p[5]
             pB.append(fitv)
             pY.append(y)
         #print('Coef poly ',p)
@@ -850,8 +853,12 @@ def auto_crop_img (cam_height, h,w, frame, cercle0, debug_crop, param):
         dh_droite=d_hor+crop_wi
     """
     if w-crop_wi+dch_left < 0 : # doit faire du padding
-        dch_droite=dch_left+w
+        if d_hor>0 : 
+            dch_droite=dch_left+w-d_hor # modif 13 jan 24 padding a droite
+        else:
+            dch_droite=dch_left+w # garde comme avant modif ds autres cas
         dh_droite=w
+
     else:
     
         if d_hor <0 :
