@@ -11,6 +11,31 @@ Front end de traitements spectro helio de fichier ser
 - remplace appel meudon par gong
 
 -------------------------------------------------------------------------------
+
+Version en cours Paris 5.8a>b>c>d
+- gestion seuil max sliders pour protus à 50 au lieu de 255
+- bug fix sur imgdata apres sliders change pour garder l'image originale
+- ajoute generation profil spectral depuis image _mean en .dat dans complements
+- offset decalage doppler
+- ajout egalisation luminosité des couleurs si doppler est decalé
+- ajout bouton pour afficher le profil spectral
+- remise de la barre de titre
+- plus de barre de titre et grab_anywhere
+- ajout d'un bouton pour traiter le dernier fichier du repertoire
+- limite image autour du disque pour detection bords apres tilt
+- TODO : seuils disks en calcium sont trop contrastés, prefere clahe
+- TODO : bandes images helium
+
+version 5.8 du 10 fev 2024 paris
+- retour en arriere sur le clamp du profil pour la detection de edge
+
+version 5.7 du 3 fevrier 2024 Antibes
+- ajout lignes en haut et bas sur fort tilt plutot qu'une valeur unique dans la zone de padding
+- ajout du fichier de config pour variable globale
+- ajout variable LowDyn pour scan faible dynamique
+- modif clamp zone brillante sur detection edge comme en faible dynamique
+- modif ligne zero et derniere pour detection bord disque partiel sans etre en echec sur disque calcium avec diffusé
+
 version 13 janvier 2024
 - modif autocrop padding a droite
 - test mode seuil inversé
@@ -242,6 +267,7 @@ import requests as rq
 import webbrowser as web
 import urllib.request
 from datetime import datetime 
+import config as cfg
 try :
     from serfilesreader.serfilesreader import Serfile
 except ImportError : 
@@ -249,18 +275,19 @@ except ImportError :
 import stonyhurst as sth
 
 import PySimpleGUI as sg
-import ctypes
- 
+try :
+    import ctypes
+except:
+    pass
 
+import matplotlib
+import matplotlib.pyplot as plt
 
-# -------------------------------------------------------------
-global LG # Langue de l'interfacer (1 = FR ou 2 = US)
-LG = 2
-# -------------------------------------------------------------
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-current_version = 'Inti V5.6 by V.Desnoux et.al. '
+short_version = 'Inti V6.0'
+current_version = short_version + ' by V.Desnoux et.al. '
 
 def get_lum_moyenne(img) :
     # ajout calcul intensité moyenne sur ROI centrée
@@ -285,6 +312,8 @@ def on_change_slider(x):
     #print(params[0])
     sb = cv2.getTrackbarPos('Seuil bas', 'sliders')
     sh = cv2.getTrackbarPos('Seuil haut', 'sliders')
+    if sh>255:
+        sh=255
     s_bas=int(sb*65535/255)
     s_haut=int(sh*65535/255)
     #print('non inv : ',s_haut, s_bas)
@@ -308,28 +337,14 @@ def on_change_slider(x):
         
 
     cc=np.array(f, dtype='uint16')
-    param=np.copy(cc)
-    param2=f1
+    #param=np.copy(cc)
+    param2=np.copy(img_data)
     paramh=s_haut
     paramb=s_bas
-    cv2.setMouseCallback(source_window,mouse_event_callback, [source_window, param,param2,paramh,paramb])
+    cv2.setMouseCallback(source_window,mouse_event_callback, [source_window, cc,param2,paramh,paramb])
     cc=cv2.flip(cc,0)
    
     cv2.imshow(source_window,cc)
-
-def get_sun_meudon (date_jd1):
-    # obsolete
-    date_jd2=date_jd1+1
-    r1="http://voparis-tap-helio.obspm.fr/__system__/tap/run/sync?LANG=ADQL&format=txt&"
-    r2="request=doQuery&query=select%20access_url%20from%20bass2000.epn_core%20where%20time_min%20between%20"
-    r3=str(date_jd1)+"%20and%20"+str(date_jd2)+"%20and%20access_format=%27image/jpeg%27%20"
-    r4="and%20filter=%27H%20Alpha%27"
-    Vo_req=r1+r2+r3+r4
-
-    reponse_web=rq.get(Vo_req)
-    sun_meudon=reponse_web.text.split("\n")[0]
-    
-    return sun_meudon
 
 
 def mouse_event_callback( event,x,y,flags,params):
@@ -338,12 +353,21 @@ def mouse_event_callback( event,x,y,flags,params):
     try :
         if event==cv2.EVENT_LBUTTONDOWN or event==cv2.EVENT_LBUTTONUP:
             source_window=params[0]
-            img_data=params[2]
+            img_data=np.copy(params[2])
             #print('mouse: ',params[0])
-            sh=int(params[3]/65000*255)
-            sb=int(params[4]/65000*255)
+    
+            sh=int(params[3]/65535*255)
+            sb=int(params[4]/65635*255)
             cv2.setTrackbarPos('Seuil bas','sliders',sb)
             cv2.setTrackbarPos('Seuil haut','sliders',sh)
+            if source_window == 'protus' :
+
+                cv2.setTrackbarMax('Seuil haut', 'sliders', 50)
+                cv2.setTrackbarMax('Seuil bas', 'sliders', 50) 
+            else :
+                cv2.setTrackbarMax('Seuil haut', 'sliders', 255)
+                cv2.setTrackbarMax('Seuil bas', 'sliders', 255) 
+                
             cv2.setWindowProperty('sliders',cv2.WND_PROP_TOPMOST,1)
             cv2.setWindowProperty('Zoom',cv2.WND_PROP_TOPMOST,1)
         if event == cv2.EVENT_MOUSEMOVE:
@@ -356,6 +380,7 @@ def mouse_event_callback( event,x,y,flags,params):
             except:
                 pass
     except:
+        print('pb sliders')
         pass
 
 def mouse_event2_callback( event,x,y,flags,param):
@@ -373,6 +398,20 @@ def mouse_event2_callback( event,x,y,flags,param):
             cv2.imshow('mean', param)
         except:
             pass
+
+def get_sun_meudon (date_jd1):
+    # obsolete
+    date_jd2=date_jd1+1
+    r1="http://voparis-tap-helio.obspm.fr/__system__/tap/run/sync?LANG=ADQL&format=txt&"
+    r2="request=doQuery&query=select%20access_url%20from%20bass2000.epn_core%20where%20time_min%20between%20"
+    r3=str(date_jd1)+"%20and%20"+str(date_jd2)+"%20and%20access_format=%27image/jpeg%27%20"
+    r4="and%20filter=%27H%20Alpha%27"
+    Vo_req=r1+r2+r3+r4
+
+    reponse_web=rq.get(Vo_req)
+    sun_meudon=reponse_web.text.split("\n")[0]
+    
+    return sun_meudon
 
 def display_mean_img2 ():
     # Lecture et affiche image disque brut
@@ -470,7 +509,7 @@ def UI_calculette(size_pix_cam, bin_cam):
     disp=0
     wav_name=''
     wav_dict={'Ha':6562.762,'Ca':3968.469,'He':5877.3}
-    if LG==1 : # en français
+    if cfg.LG==1 : # en français
         layout=[
             [sg.Radio('Ha', 'wav',key="-HA-", default=True), sg.Radio('Ca', 'wav',key='-CA-'), sg.Radio('He', 'wav', key='-HE-')],
             [sg.Text("Valeur en angströms : ", size=(20,1)), sg.Input(default_text='1', size=(7,1), key='-ang-', background_color='light yellow')],
@@ -541,7 +580,7 @@ def UI_graph():
     else:
         sg.set_options(scaling=screen_scale)
     
-    if LG == 1 :
+    if cfg.LG == 1 :
         color_list=['Jaune', 'Noir']
         c=color_list[0]
         g=True
@@ -610,7 +649,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Racines=[]
     list_wave=[['Manual','Ha','Ha2cb','Cah','Cah1v','Cak','Cak1v','HeID3'],[0,6562.762,6561.432,3968.469,3966.968,3933.663,3932.163,5877.3]]
 
-    if LG == 1 :
+    if cfg.LG == 1 :
         colonne0=[
             [sg.Checkbox(' Inversion E-W', default=Flags['FLIPRA'], key='-RA_FLIP-')],
             [sg.Checkbox(' Inversion N-S', default=Flags['FLIPNS'], key='-NS_FLIP-')]
@@ -623,7 +662,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             ]
         colonne1=[[sg.Button('Grid', key='Graph')]]
         
-    if LG == 1:
+    if cfg.LG == 1:
         section1 = [
                 [sg.Checkbox(' Affichage de la reconstruction en temps réel ', default=False, key='-DISP-')],
                 #[sg.Checkbox(' Non sauvegarde des fichiers FITS intermédiaires', default=True, key='-SFIT-')],
@@ -649,7 +688,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 ]
         
     
-    if LG == 1:
+    if cfg.LG == 1:
         section2 = [
                 [sg.Text('Observateur :', size=(12,1)), sg.Input(default_text=data_entete[0], size=(25,1),key='-OBSERVER-')],
                 [sg.Text('Contact :', size=(12,1)), sg.Input(default_text=data_entete[4], size=(25,1),key='-CONTACT-')],
@@ -686,7 +725,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 [sg.Column(colonne0, size=(400,100)),sg.Column(colonne1, vertical_alignment='Top') ]               
                 ]
       
-    if LG == 1:
+    if cfg.LG == 1:
         tab1_layout = [      
             [sg.T("")],
             #### Section 1 part ####
@@ -704,7 +743,9 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         
         tab2_layout =[
             [sg.Text("")],
-            [sg.Text('Décalage doppler :',size=(16,1)),sg.Input(default_text=dec_pix_dop,size=(4,1),key='-DopX-',enable_events=True)],
+            [sg.Text('Amplitude doppler :',size=(16,1)),sg.Input(default_text=dec_pix_dop,size=(4,1),key='-DopX-',enable_events=True)],
+            [sg.Text('Décalage doppler :', size=(16,1)), sg.Input(default_text=0, size=(4,1), key='-SHIFTDOP-', enable_events=True),
+             sg.Text('    '), sg.Button('Profil', key='-PROFIL-')],
             [sg.Checkbox(' Inversion B - R ', default=Flags['DOPFLIP'], key='-DOP_FLIP-')],
             [sg.Text('Décalage continuum :',size=(16,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='-ContX-',enable_events=True)]
             ]
@@ -767,9 +808,11 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         tab2_layout =[
             #[sg.Checkbox(' Compute Doppler and Continuum images ', default=False, key='-DOPCONT-')],
             [sg.Text("")],
-            [sg.Text('Doppler shift :',size=(12,1)),sg.Input(default_text=dec_pix_dop,size=(4,1),key='-DopX-',enable_events=True)],
+            [sg.Text('Doppler amplitude :',size=(16,1)),sg.Input(default_text=dec_pix_dop,size=(4,1),key='-DopX-',enable_events=True)],
+            [sg.Text('Doppler shift :', size=(16,1)), sg.Input(default_text=0, size=(4,1), key='-SHIFTDOP-', enable_events=True), 
+             sg.Text('     '), sg.Button('Profile', key='-PROFIL-',)],
             [sg.Checkbox('B - R flip ', default=Flags['DOPFLIP'], key='-DOP_FLIP-')],
-            [sg.Text('Continuum shift :',size=(12,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='-ContX-',enable_events=True)]
+            [sg.Text('Continuum shift :',size=(16,1)),sg.Input(default_text=dec_pix_cont,size=(4,1),key='-ContX-',enable_events=True)]
             ]
         
         tab3_layout =[
@@ -815,33 +858,36 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
              sg.Text('SY/SX ratio :', size=(10,1)), sg.Input(default_text=saved_ratio, size=(6,1),key='-RATIO2-')]
             ]
     
-    if LG == 1:
+    if cfg.LG == 1:
         layout = [
-            [sg.Text('Fichier(s) :', size=(6, 1)), sg.InputText(default_text='',size=(66,1),enable_events=True,key='-FILE-'),
-             sg.FilesBrowse(' Ouvrir ',file_types=(("SER Files", "*.ser"),),initial_folder=os.path.join(WorkDir,previous_serfile))],
+            [sg.Text('Fichier(s) :', size=(8, 1)), sg.InputText(default_text='',size=(66,1),enable_events=True,key='-FILE-'),
+             sg.FilesBrowse(' Ouvrir ',file_types=(("SER Files", "*.ser"),),initial_folder=os.path.join(WorkDir,previous_serfile)),
+             sg.Button("Dernier", key='-LASTFILE-')],
             
             [sg.TabGroup([[sg.Tab('  Général  ', tab1_layout), sg.Tab('Doppler & Continuum', tab2_layout,), 
                 sg.Tab('Séquence Doppler', tab3_layout,),
                 sg.Tab('Magnétogramme',tab4_layout,),
-                sg.Tab('Raie libre', tab5_layout)]],change_submits=True,key="TabGr",tab_background_color='#404040')],  
+                sg.Tab('Raie libre', tab5_layout)]],change_submits=True,key="TabGr",title_color='#796D65',tab_background_color='#404040')],  
             [sg.Button('Ok', size=(14,1)), sg.Cancel('  Sortir  ')],
             [sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
             ]
     else:
         layout = [
             [sg.Text('File(s) :', size=(7, 1)), sg.InputText(default_text='',size=(70,1),enable_events=True,key='-FILE-'),
-             sg.FilesBrowse(' Open ',file_types=(("SER Files", "*.ser"),),initial_folder=os.path.join(WorkDir,previous_serfile))],
+             sg.FilesBrowse(' Open ',file_types=(("SER Files", "*.ser"),),initial_folder=os.path.join(WorkDir,previous_serfile)),
+             sg.Button("Last", key='-LASTFILE-')],
             
             [sg.TabGroup([[sg.Tab('  General  ', tab1_layout), sg.Tab('Doppler & Continuum', tab2_layout,), 
                 sg.Tab('Doppler Sequence', tab3_layout,),
                 sg.Tab('Magnetogram',tab4_layout,),
-                sg.Tab('Free line', tab5_layout)]],change_submits=True,key="TabGr",tab_background_color='#404040')],  
+                sg.Tab('Free line', tab5_layout)]],change_submits=True,key="TabGr",title_color='#796D65',tab_background_color='#404040')],  #title_color='#796D65',
             [sg.Button('Ok', size=(14,1)), sg.Cancel('  Exit  ')],
             [sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
             ]
             
     
-    window = sg.Window('INTI', layout, location=win_pos,finalize=True)
+    window = sg.Window(short_version, layout, location=win_pos,grab_anywhere=True,
+                       no_titlebar=False,finalize=True)
     opened1 = False
     window['-SEC1-'].update(visible=opened1)
     opened2=False
@@ -860,9 +906,37 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     while True:
         event, values = window.read()
         #print(event)
+                    
         if event==sg.WIN_CLOSED or event=='  Exit  ' or event=='  Sortir  ': 
             Flag_sortie=True
             break
+        if event=="-PROFIL-":
+            # charge le fichier profil .dat
+            WorkDir=os.path.dirname(values['-FILE-'])+os.path.sep
+            base=os.path.basename(values['-FILE-'])
+            basefich=os.path.splitext(base)[0]
+            pro_file=WorkDir+"Complements"+os.path.sep+'_'+basefich+'.dat'
+            #print('profile ', pro_file)
+            if basefich != '' :
+                try :
+                    pro_lamb=np.loadtxt(pro_file)
+                    pro=pro_lamb[:,1]
+                    lamb=pro_lamb[:,0]        
+                    # calcul centre de la raie
+                    centre_raie = np.argmin(pro)
+                    
+                    lamb=lamb-centre_raie
+                    # affiche
+                    plt.close('all')
+                    matplotlib.use("Qt5Agg")
+                    plt.figure(figsize=(8,5))
+                    plt.scatter(lamb, pro, marker='.')
+                    plt.title("line profile")
+                    plt.show()
+                except:
+                    pass
+                
+            
         
         if event=="Trame" or event=="Frame" or event=="Trame0" or event=='Frame0' :
             poly_trame=[]
@@ -948,13 +1022,19 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                         fits_dateobs=f_dateSerUTC.strftime('%Y-%m-%dT%H:%M:%S.%f7%z')
                         window['-DATEOBS-'].update(fits_dateobs)
                     except:
-                        if LG==1 :
+                        if cfg.LG==1 :
                             logme('Erreur ouverture fichier : '+serfile)
                         else:
                             logme('File open error : '+serfile)
                     
                     
-        
+        if event=="-LASTFILE-":
+            files = [x for x in os.listdir(WorkDir) if x.endswith(".ser")]
+            paths = [os.path.join(WorkDir, basename) for basename in files]
+            newest = max(paths , key = os.path.getctime)
+            window['-FILE-'].update(newest)
+            window.write_event_value('Ok','')
+
         if event=='Ok':
 
             #WorkDir=os.path.dirname(values['-FILE-'])+"/"
@@ -965,7 +1045,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             if basefich!='':
                 break
             else:
-                if LG==2:
+                if cfg.LG==2:
                     print('Enter file name')
                 else:
                     print('Entrez un nom de fichier')
@@ -1042,7 +1122,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 """
                 
             except:
-                if LG==1 :
+                if cfg.LG==1 :
                     logme("Erreur dans le format des données")
                 else:
                     logme("Error in data formatting")
@@ -1112,7 +1192,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
             
         if event == 'Graph' :
             grid_graph['color_grid'], grid_graph['gradu_on'] = UI_graph()
-            if LG==1 :
+            if cfg.LG==1 :
                 if grid_graph['color_grid']=='Jaune' :
                     grid_graph['color_grid']='Yellow'
                 if grid_graph['color_grid']=='Noir' :
@@ -1213,6 +1293,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Shift.append(float(values['-DX-']))
     Shift.append(int(values['-DopX-']))
     Shift.append(int(values['-ContX-']))
+
     
     if Flags["POL"]:
         Shift.append(int(values['Zeeman_wide']))
@@ -1220,6 +1301,10 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     else:
         Shift.append(int(values['Volume']))
         Shift.append(0.0)
+    
+    Shift.append(float(values['-SHIFTDOP-']))
+    #print('shift dop ', Shift[5])
+    
     Racines.append(values['racine_bleu'])
     Racines.append(values['racine_rouge'])
     
@@ -1242,7 +1327,7 @@ mouse_x,mouse_y=0,0
 global img_data
 
 
-if sys.platform=="win32&" :
+if sys.platform=="win32" :
     # gestion dynamique de la taille ecran
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2) # if your windows version >= 8.1
@@ -1297,7 +1382,7 @@ while not Flag_sortie :
         with open(my_ini, "r") as f1:
             my_dictini = yaml.safe_load(f1)
     except:
-       if LG == 1:
+       if cfg.LG == 1:
            print('Création de inti.yaml comme : ', my_ini)
        else:
            print('creating inti.yaml as: ', my_ini) 
@@ -1461,7 +1546,7 @@ while not Flag_sortie :
         base=os.path.basename(serfile)
         basefich=os.path.splitext(base)[0]
         if base=='':
-            if LG == 1:
+            if cfg.LG == 1:
                 logme('Erreur de nom de fichier : '+serfile)
             else:
                 logme('File name error: '+serfile)
@@ -1548,7 +1633,7 @@ while not Flag_sortie :
             with open(my_ini, "w") as f1:
                 yaml.dump(my_dictini, f1, sort_keys=False)
         except:
-            if LG == 1:
+            if cfg.LG == 1:
                 logme ('Erreur lors de la sauvegarde de inti.yaml comme : '+my_ini)
             else:
                 logme ('Error saving inti.yaml as: '+my_ini)
@@ -1682,6 +1767,7 @@ while not Flag_sortie :
         fc=(frame1-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
         fc[fc<0]=0
         frame_contrasted=np.array(fc, dtype='uint16')
+        
         if len(frames)==1 and len(serfiles)==1:
             param=np.copy(frame_contrasted)
             param2=np.copy(frame1)
@@ -1696,7 +1782,7 @@ while not Flag_sortie :
         
         lum_roi= get_lum_moyenne(frame1)
         print()
-        if LG == 1:
+        if cfg.LG == 1:
             print("Intensité moyenne : "+ str(int(lum_roi)))
         else:
             print("Average Intensity : "+ str(int(lum_roi)))
@@ -1790,7 +1876,7 @@ while not Flag_sortie :
                 frame_contrasted3=cv2.flip(frame_contrasted3,0)
                 cv2.imshow('protus',frame_contrasted3)
             else:
-                if LG == 1:
+                if cfg.LG == 1:
                     print("Erreur disque occulteur.")
                 else:
                     print("Mask disk error.")
@@ -1813,12 +1899,14 @@ while not Flag_sortie :
             param=np.copy(cc)
             param2=np.copy(cl1)
             source_window='clahe'
-            img_data=param2
+            img_data=np.copy(param2)   # modif en copy
             paramh=Seuil_haut
             paramb=Seuil_bas
             cv2.setMouseCallback('clahe',mouse_event_callback, [source_window,param,param2,paramh, paramb])
-            sb=int(Seuil_bas/65000*255)
-            sh=int(Seuil_haut/65000*255)
+            sb=int(Seuil_bas/65535*255)
+            sh=int(Seuil_haut/65535*255)
+            if sh > 65535 :
+                sh=65535
             cv2.setTrackbarPos('Seuil bas','sliders',sb)
             cv2.setTrackbarPos('Seuil haut','sliders',sh)
             
@@ -1872,9 +1960,22 @@ while not Flag_sortie :
                         f1=np.array(frames[1], dtype="float64")
                         f2=np.array(frames[2], dtype="float64")
                         moy=np.array(((f1+f2)/2), dtype='uint16')
+                        if Shift[5] != 0 :
+                            lum_roi1 = get_lum_moyenne(frames[1])
+                            lum_roi2 = get_lum_moyenne(frames[2])
+                            lum_roimoy = get_lum_moyenne(moy)
+                            ratio_l1 = lum_roimoy/lum_roi1
+                            ratio_l2 = lum_roimoy/lum_roi2
+                            frames[2] = frames[2]*ratio_l2
+                            frames[1] = frames[1]*ratio_l1
+                    
+                        #frames[1]=np.array((moy-f1), dtype='uint16')
+                        #frames[2]=np.array((f2-moy), dtype='uint16')
+
+                    
                     i2,Seuil_haut, Seuil_bas=seuil_image(moy)
-                    i3=seuil_image_force(frames[2],Seuil_haut, Seuil_bas)
                     i1=seuil_image_force (frames[1],Seuil_haut, Seuil_bas)
+                    i3=seuil_image_force(frames[2],Seuil_haut, Seuil_bas)
                     #i1,Seuil_haut, Seuil_bas=seuil_image(frames[1])
                     #i3,Seuil_haut, Seuil_bas=seuil_image(frames[2])
                     if Flags['DOPFLIP'] !=0 : 
@@ -1889,7 +1990,7 @@ while not Flag_sortie :
                     cv2.imshow('doppler',img_doppler)
                
                 except:
-                    if LG == 1:
+                    if cfg.LG == 1:
                         print ('Erreur image doppler.')
                     else:
                         print ('Doppler image error.')
@@ -1915,7 +2016,7 @@ while not Flag_sortie :
                     #moy=s*0.5
                     img_diff=np.array(np.array(fr2, dtype='float32')-np.array(fr1, dtype='float32'),dtype='int32')
                 except:
-                    if LG == 1:
+                    if cfg.LG == 1:
                         print ('Erreur image difference ')
                     else:
                         print ('Image difference error.')
@@ -1959,7 +2060,7 @@ while not Flag_sortie :
                 
                
                 except:
-                    if LG == 1:
+                    if cfg.LG == 1:
                         print ('Erreur image ')
                     else:
                         print ('Image error.')
@@ -2012,10 +2113,15 @@ while not Flag_sortie :
             if grid_on :
                 try :
                     fich_param['P'] = header['SOLAR_P']  # Only for display, INTI puts heliographic pole on top
+                    fich_param['PDisp'],a,b,c=angle_P_B0 (fich_param['date'] ) # modif 14 janvier, il faut l'afficher
                 except:
                     fich_param['PDisp'],a,b,c=angle_P_B0 (fich_param['date'] )
                 try :
                     fich_param['B0'] = float(header['SEP_LAT'])
+                    if fich_param['B0'] == 0 :  # modif du 14 janvier 24
+                        a, fich_param['B0'],b,c=angle_P_B0 (fich_param['date'] )
+                        fich_param['B0']=float(fich_param['B0'])
+                        
                 except:
                     a, fich_param['B0'],b,c=angle_P_B0 (fich_param['date'] )
                     #print('B0: ', fich_param['B0'])
@@ -2028,7 +2134,6 @@ while not Flag_sortie :
                 else :
                     fich_param['ycc'] = y0
                 fich_param['radius'] = r
-    
                 graph_param['gradu'] = grid_graph['gradu_on']
                 graph_param['opacity'] = 0.5
                 graph_param['lwidth'] = 0.2

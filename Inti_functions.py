@@ -17,8 +17,9 @@ from matplotlib.patches import Ellipse
 import cv2 as cv2
 import astropy.time
 import math
-
+import config as cfg
 #import imutils
+
 
 """
 version du 13 janvier 2024
@@ -63,6 +64,7 @@ Version du 19 aout 2021
 
 mylog=[]
 
+
 # from J.Meeus
 def angle_P_B0 (date_utc):
     time = astropy.time.Time(date_utc)
@@ -105,17 +107,31 @@ def logme(toprint):
     mylog.append(toprint+'\n')
     print (toprint)
 
-def detect_bord (img, axis, offset):
+def detect_bord (img, axis, offset, flag_disk):
+    # ajout d'un flag pour distinguer les images de disk de l'image spectrale moyenne
+    
     #axis donne la direction de detection des bords si 1 vertical, ou 0 horiz
     #offset: decalage la coordonnée pour prendre en compte le lissage gaussien
     debug=False
-    
     # pretraite l'image pour eliminer les zone trop blanche
     img_mean=1.3*np.mean(img) #facteur 1.3 pour eviter des artefacts de bords
     img_c=np.copy(img)
     img_c[img_c>img_mean]=img_mean
-    img_c[0,:]=0 # pour meilleure detection bord pour soleil partiel
-    img_c[-1,:]=0
+    
+    
+    #img_c[0,:]=0 # pour meilleure detection bord pour soleil partiel
+    #img_c[-1,:]=0
+    
+    img_c[0,:]= np.percentile(img,10) # pour meilleure detection bord pour soleil partiel
+    img_c[-1,:]=np.percentile(img,10)
+    
+    
+    #guillaume
+    if cfg.LowDyn :
+        img_c[0:7,:]=np.percentile(img_c, 15) # valeur du fond noir sur
+        img_c[-7:,:]=np.percentile(img_c, 15) # valeur du fond noir sur
+        #print('LOWDYN percentile 15', np.percentile(img_c, 15))
+
     
     # on part de cette image pour la detection haut bas
     ih=img.shape[0]
@@ -124,13 +140,27 @@ def detect_bord (img, axis, offset):
     if axis==1:
         # Determination des limites de la projection du soleil sur l'axe Y
         #ymean=np.mean(img[10:,:-10],1)
-        if 2==1:  #MattC... ne marche pas pour image moyenne
-            timg=np.array((((img-np.min(img))/(np.max(img)-np.min(img)))*255), dtype='uint8')
-            timg2 = cv2.threshold(timg, 25, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-            img_c=timg2[1]
-        
 
-        ymean=np.mean(img_c,1) #MattC
+            
+        if flag_disk :
+            if 2==1:  # ne marche pas pour toutes les situations en calcium
+                t=np.array((((img_c-np.min(img_c))/(np.max(img_c)-np.min(img_c)))*255), dtype='uint8')
+                t2 = cv2.threshold(t, 25, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+                img_c=t2[1]
+
+            """
+            background=np.percentile(img_c,25)
+            background2=np.percentile(img_c,15)
+            img_c[img_c<background]=0
+            a=np.true_divide(img_c.sum(1),(img_c!=0).sum(1))
+            b=np.array(np.nan_to_num(a,nan=background2), dtype='int16')
+            b=np.reshape(b,(ih,1))
+            ymean=np.mean(b[1:-1,:],1)
+            """
+            ymean=np.mean(img_c,1)
+            
+        else :
+            ymean=np.mean(img_c,1) 
         
         if debug:
             plt.imshow(img_c)
@@ -138,6 +168,7 @@ def detect_bord (img, axis, offset):
             plt.plot(ymean)
             plt.title('Profil Y')
             plt.show()
+        
         ymean=gaussian_filter1d(ymean, 11)
         yth=np.gradient(ymean)
 
@@ -165,15 +196,31 @@ def detect_bord (img, axis, offset):
             plt.title('Profil X ')
             plt.plot(xmean)
             plt.show()
+        
         b=np.max(xmean)
         bb=b*0.5
+        
+        if cfg.LowDyn :
+            #guillaume
+            #bb=b*0.9 # faible dynamique, ne pas ecréter les plages blanches trop fortement
+            bb=b*1
+        
         xmean[xmean>bb]=bb
+        
+        if debug:
+            plt.title('Profil Xclip ')
+            plt.plot(xmean)
+            plt.show()
+        
         xmean=gaussian_filter1d(xmean, 11)
         xth=np.gradient(xmean)
-        
+  
+    
         x1=xth.argmax()-offset+1 # prend en compte decalage de 1 du tableau moyenne
         x2=xth.argmin()+offset+1 # prend en compte decalage de 1 du tableau moyenne
         #test si pas de bord en x
+        #if x1<=11 or x2>iw:
+            
         if x1<=11 or x2>iw:
             x1=0
             x2=iw
@@ -247,13 +294,13 @@ def detect_y_of_x (img, x1,x2):
 def circularise (img,iw,ih,ratio_fixe,*args): #methode des limbes
 
     if len(args)==0: 
-        y1,y2=detect_bord (img, axis=1,offset=5)    # bords verticaux
+        y1,y2=detect_bord (img, axis=1,offset=5, flag_disk=True)    # bords verticaux
     else:
         y1=args[0]
         y2=args[1]
        # print ("force y1,y2 ",y1,y2)
     
-    x1,x2=detect_bord (img, axis=0,offset=5)    # bords horizontaux
+    x1,x2=detect_bord (img, axis=0,offset=5, flag_disk=True)    # bords horizontaux
     #logme('Position X des limbes droit et gauche x1, x2 : '+str(x1)+' '+str(x2))
     
     TailleX=int(x2-x1)
@@ -338,7 +385,7 @@ def circularise2 (img,iw,ih,ratio): #methode par fit ellipse préalable
 def detect_noXlimbs (myimg):
     
     flag_nobords=False
-    x1,x2=detect_bord (myimg, axis=0,offset=5)    # bords horizontaux
+    x1,x2=detect_bord (myimg, axis=0,offset=5, flag_disk=True)    # bords horizontaux
     TailleX=int(x2-x1)
     iw=myimg.shape[1]
     
@@ -351,18 +398,26 @@ def detect_noXlimbs (myimg):
 
 
 def detect_edge (myimg,zexcl, crop, disp_log):
-    edgeX=[]
-    edgeY=[]
-    bord_droit=[]
-    bord_gauche=[]
-    bord_droitY=[]
-    bord_gaucheY=[]
-    zexcl=0.01 # rendu obsolete
+    edgeX = []
+    edgeY = []
+    bord_droit = []
+    bord_gauche = []
+    bord_droitY = []
+    bord_gaucheY = []
+    zexcl = 0.01 # rendu obsolete
+    #ih = myimg.shape[0]  not used
+    iw = myimg.shape[1]
+    
+
     
     debug=False # les images
     debug1=False #les courbes
     #print("crop...", crop)
-   
+    
+    if debug:
+        plt.imshow(myimg)
+        plt.show()
+        
     # au cas ou il fallait faire differament avec fort tilt
     if crop!=0:
         myimg_crop=myimg
@@ -371,20 +426,23 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     else:
         myimg_crop=myimg
         
-    #detect si pas de limbes droits et/ou gauche  
-    y1,y2=detect_bord (myimg_crop, axis=1,offset=0)    # bords verticaux
-    x1,x2= detect_bord(myimg_crop,axis=0, offset=0)
+    #detect bord
+    y1,y2=detect_bord (myimg_crop, axis=1,offset=0, flag_disk=True)    # bords verticaux
+    x1,x2= detect_bord(myimg_crop,axis=0, offset=0, flag_disk=True)
     #print("edge y1,y2 : ", y1, y2)
     milieu=int(x1+(x2-x1)/2)
+    rayon=int((x2-x1)/2)
     
     if crop >=100 : # fort tilt
         zexcl=0
-        #milieu=int(x1+(x2-x1)/2)
-        sub_img1=myimg_crop[:,0:milieu]
-        sub_img2=myimg_crop[:,milieu:-5]
-        # bords vert gauche
-        y1g,y2g=detect_bord (sub_img1, axis=1,offset=0)
-        y1d,y2d=detect_bord (sub_img2, axis=1,offset=0)
+        zone_bin_agauche=max(0,milieu-rayon-50)
+        sub_img1=myimg_crop[:,zone_bin_agauche:milieu]
+        #sub_img2=myimg_crop[:,milieu:-5]
+        zone_bin_adroite=min(2*milieu+50,iw)
+        sub_img2=myimg_crop[:,milieu:zone_bin_adroite]
+        # bords vertical gauche et droit
+        y1g,y2g=detect_bord (sub_img1, axis=1,offset=0,flag_disk=True)
+        y1d,y2d=detect_bord (sub_img2, axis=1,offset=0,flag_disk=True)
         y1=min(y1g,y1d)
         y2=max(y2g,y2d)
         #print('y1,y2 crop', y1,y2, crop)
@@ -394,35 +452,51 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     zone_fit=abs(y2-y1)
     ze=int(zexcl*zone_fit)
     
-    # pretraite l'image pour eliminer les zone trop blanche
-    img_mean=1.3*np.mean(myimg) #facteur 1.3 pour eviter des artefacts de bords
-    img_c=np.copy(myimg)
-    img_c[img_c>img_mean]=img_mean
-
-   
+    # guillaume
+    if not cfg.LowDyn :
+        # pretraite l'image pour eliminer les zone trop blanche
+        # modif du 24 fev pour limiter a 50 pixels de part et d'autre du disque
+        img_mean=1.3*np.mean(myimg[1:-1,milieu-rayon-50:milieu+rayon+50]) #facteur 1.3 pour eviter de clamper trop fort si diffusé
+        img_c=np.copy(myimg)
+        img_c[img_c>img_mean]=img_mean
+        #print("img mean", img_mean)
+    else:
+        # releve seuil moyenne pour eviter clamp trop fort
+        img_mean=3*np.mean(myimg[1:-1,milieu-rayon-50:milieu+rayon+50]) #facteur 1.3 pour eviter des artefacts de bords
+        img_c=np.copy(myimg)
+        img_c[img_c>img_mean]=img_mean
+        #print("img mean", img_mean)
+        
     k=0
     s=[]
     
-    ze1=ze # ajout 200?
-    ze2=ze # ajout 200?
+    # scorie test zone differente resolu avec coupe demi disque bord droit et bord gauche
+    ze1=ze 
+    ze2=ze 
 
-    
-    #if crop!=0:
-    #print('zone : ',y1+ze1, y2-ze2, ze1, ze2)
 
     for i in range(y1+ze1,y2-ze2):
         li=np.copy(img_c[i,:-5])
-        myli=np.copy(img_c[i,:-5])
+        #myli=np.copy(img_c[i,:-5])
+        #myli=np.copy(img_c[i,:-5])
         
         
         #method detect_bord same as flat median
         offset=0
         b=np.percentile(li,97)
-        bb=b*0.7 #was 0.5
+        bb=b*0.7 #retour à 0.7 sinon accroche sur zones trop noires
+        
+        if cfg.LowDyn :
+            #guillaume
+            bb=b*0.9 # faible dynamique, ne pas trop clamper
+            #bb=65535
+         
+        
         #bb=b
         #print("seuil edge : ", b," ",bb)
 
         li[li>bb]=bb
+        li=gaussian_filter1d(li, 2)
         #li[li<4000]=30
         #li_med=median_filter(li,size=50)
         li_filter=gaussian_filter1d(li, 11)
@@ -435,9 +509,8 @@ def detect_edge (myimg,zexcl, crop, disp_log):
 
         
         if 2==1 :
-            if i in range(y1+ze1, y1+2+ze1) :
+            if i in range(y1+ze1+3, y1+ze1+5) :
             #if x1 <2500 :
-
                 plt.plot(li)
                 plt.title('Profil ligne '+str(i))
                 plt.show()
@@ -458,7 +531,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         else:
             s=np.array([x1li,x2li])
             
-            if s.size !=0 and (s[-1]-s[0])> 100:
+            if s.size !=0 and (s[-1]-s[0])> (x2-x1)/2:
                 c_x1=s[0]+offset
                 c_x2=s[-1]-offset
                 bord_gauche.append(c_x1)
@@ -469,6 +542,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
    
     bords=[bord_gauche, bord_droit]
     bordsY=[bord_gaucheY, bord_droitY] 
+    
     
     if debug :
         plt.imshow(myimg)
@@ -605,26 +679,29 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         plt.scatter(a2,b2,s=0.1, marker='.', edgecolors=('yellow'))
         plt.show()
     
-    polyB=[]
-    polyY=[]
-    pB=[]
-    pY=[]               
-    for i in range(0,2)  :
-        # Test entre 5 et 6 
-        p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],6)
-        #p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],5)
-
-        for y in range(bordsY[i][5],bordsY[i][-5]) :
-            fitv = p[0]*y**6+p[1]*y**5+p[2]*y**4+p[3]*y**3+p[4]*y**2+p[5]*y+p[6]
-            #fitv = p[0]*y**5+p[1]*y**4+p[2]*y**3+p[3]*y**2+p[4]*y**1+p[5]
-            pB.append(fitv)
-            pY.append(y)
-        #print('Coef poly ',p)
-        polyB.append(pB)
-        polyY.append(pY)
-        bords[i]=polyB[i]
-        bordsY[i]=polyY[i]
-           
+    if not cfg.LowDyn : # echec du fit polynomial en faible dynamique
+    #if 1==1 : # echec du fit polynomial en faible dynamique
+        polyB=[]
+        polyY=[]
+        pB=[]
+        pY=[]               
+        for i in range(0,2)  :
+            # Test entre 5 et 6 
+            p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],6)
+            #p = np.polyfit(bordsY[i][1:-1],bords[i][1:-1],5)
+    
+            for y in range(bordsY[i][5],bordsY[i][-5]) :
+                fitv = p[0]*y**6+p[1]*y**5+p[2]*y**4+p[3]*y**3+p[4]*y**2+p[5]*y+p[6]
+                #fitv = p[0]*y**5+p[1]*y**4+p[2]*y**3+p[3]*y**2+p[4]*y**1+p[5]
+                if fitv>=0 :
+                    pB.append(fitv)
+                    pY.append(y)
+            #print('Coef poly ',p)
+            polyB.append(pB)
+            polyY.append(pY)
+            bords[i]=polyB[i]
+            bordsY[i]=polyY[i]
+       
     # recombine bords droit et gauche
     edgeX=bords[0]+bords[1]
     edgeY=bordsY[0]+bordsY[1]
@@ -980,5 +1057,20 @@ def translate_img (img_mean, poly):
     
     return img_mean_redresse
 
+def bin_to_spectre (img, y1, y2):
+    # get the array through file path 
+    
+    # strategy to bin between y1 and y2
+    # limit bin to small section of 20 pixels to avoid line blur
+    # line is curved to vertical sum would blur the line
+    
+    pbin= ((y2-y1)//2) +1
+    array_tobin= img[pbin-20:pbin+21,:]
+    pro= np.sum(array_tobin,axis=0)
+
+    return pro
+    
+    
+    
 
 
