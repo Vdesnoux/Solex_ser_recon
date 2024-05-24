@@ -11,8 +11,30 @@ Front end de traitements spectro helio de fichier ser
 - remplace appel meudon par gong
 
 -------------------------------------------------------------------------------
+Version en cours V6.0b > V6.0c>V6.0d > 6.1 a publier ! 
+- ajout correction bad pixel sur ligne du polynome pour chaque trame > en commentaire 
+- message log datetime sur fichier SER si pb
+- image mix
+- ajout colorisation en rouge h-alpha, calcium et jaune
+- selection couleur auto sur histogramme des intensités
+- ajout param grille on/off dans yaml, a editer dans yaml - pas de GUI
+- bouton Fr-En
+6.0c
+- abaisse seuil calcium histo de 80 à 70
+- prend en compte valeur longeur d'onde de database pour "overrider" le mode auto (sécurité)
+6.0d
+- bug saturation overflow division flat dans recon
+- max visu protu *0.6 au lieu de 0.5
+- augemente la luminosité images couleurs et leur gamma
+- accorde flip images png couleurs
+- ajout dans recon des coordonnées y1,y2 et x1,x2 des bords du disque dans log et header
+- modif couleur jaune > pale 
+- suppression sauvegarde fichier fits BASS2000 si le label wave est a Manual
+6.1
+- nom fichier color avec la couleur pour ne pas ecraser couleur continuum
+- stonyhurst on/off dans les advanced settings
 
-Version en cours Paris 5.8a>b>c>d
+Version en cours Paris 5.8a>b>c>d> 6.0 publiée
 - gestion seuil max sliders pour protus à 50 au lieu de 255
 - bug fix sur imgdata apres sliders change pour garder l'image originale
 - ajoute generation profil spectral depuis image _mean en .dat dans complements
@@ -282,12 +304,272 @@ except:
 
 import matplotlib
 import matplotlib.pyplot as plt
+import time
 
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-short_version = 'Inti V6.0'
+short_version = 'Inti V6.1'
 current_version = short_version + ' by V.Desnoux et.al. '
+
+def Colorise_Image (couleur, frame_contrasted, basefich, suff):
+    
+ 
+    
+    # gestion couleur auto ou sur dropdown database compatibility
+    # 'Manual','Ha','Ha2cb','Cah','Cah1v','Cak','Cak1v','HeID3'
+    if couleur == 'Manual' :
+        couleur = 'on' # mode detection auto basé sur histogramme simple
+    else :
+        if couleur[:2] == 'Ha' :
+            couleur='H-alpha'
+        if couleur[:3] == 'Hac' :
+            couleur='Pale'
+        if couleur[:2] == 'Ca' :
+            couleur='Calcium'
+        if couleur[:2] == 'He' :
+            couleur='Pale'
+    
+    f=frame_contrasted/256
+    f_8=f.astype('uint8')
+    
+    
+    hist = cv2.calcHist([f_8],[0],None,[256],[10,256])
+    pos_max=np.argmax(hist)
+    #print(pos_max)
+    
+    # test ombres >> provoque des applats 
+    ombres=False
+    if ombres :
+        
+        i_low=[]
+        i_hi=[]
+        fr=np.copy(frame_contrasted)
+        i_low=np.array((fr<(pos_max*256))*fr*1.01, dtype='uint16')
+        i_hi=(fr>=pos_max)*fr
+        fr=i_low+i_hi
+        f=fr/256
+        f_8=f.astype('uint8')
+    
+    
+    if couleur =='on' :  
+        if pos_max<200 and pos_max>=70 :
+            couleur="H-alpha"
+        if pos_max<70 :
+            couleur="Calcium"
+        if pos_max>=200 :
+            couleur="Pale"
+        """
+        plt.clf()
+        plt.xlim(2,255)
+        plt.plot(hist)
+        plt.show()
+        """
+
+    
+    # test ombres >> provoque des applats 
+    ombres=False
+    if ombres :
+        f8_low=[]
+        f8_hi=[]
+        f8_low=np.array((f_8<pos_max)*f_8*1.05, dtype='uint8')
+        f8_hi=(f_8>=pos_max)*f_8
+        f_8=f8_low+f8_hi
+    
+    
+    #couleur="H-alpha"
+    
+    if couleur != '' :
+        # image couleur en h-alpha
+        if couleur == 'H-alpha' :
+            # build a lookup table mapping the pixel values [0, 255] to
+            # their adjusted gamma values
+            gamma=0.3   # was gam 1.3 > 0.3 ok un peu plus clair et 0.1 plus sombre sombre
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            f1_gam= cv2.LUT(f_8, table)
+            
+            gamma=0.55 # was gam 0.5 - 0.3 trop rouge, 0.6 un peu jaune - 0.55 ok
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            f2_gam= cv2.LUT(f_8, table)
+            
+            gamma=1 # gam is 1.0
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            f3_gam= cv2.LUT(f_8, table)
+            
+            i1=(f1_gam*0.1).astype('uint8')     # was 0.05 - 1 trop pale - 0.1 ok
+            i2=(f2_gam*1).astype('uint8')       # is 1
+            i3=(f3_gam*1).astype('uint8')       # is 1
+            
+            gamma=1.5 # gam total image 2 est trop fade, 1.2 pas assez, 1.5 pas mal
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            i1= cv2.LUT(i1, table)
+            i2= cv2.LUT(i2, table)
+            i3= cv2.LUT(i3, table)
+            
+            img_color=np.zeros([frame_contrasted.shape[0], frame_contrasted.shape[1], 3],dtype='uint8')
+            img_color[:,:,0] = np.array(i1, dtype='uint8') # blue
+            img_color[:,:,1] = np.array(i2, dtype='uint8') # blue
+            img_color[:,:,2] = np.array(i3, dtype='uint8') # blue
+            
+            # gestion gain alpha et luminosité beta
+            #alpha=(255//2+10)/pos_max
+            #print('alpha ', alpha)
+            #img_color=cv2.convertScaleAbs(img_color, alpha=alpha, beta=0) # was 1.3 - 1.1 plus sombre - 1.2 ok
+            
+            # affiche dans clahe window for test
+            #cv2.imshow('clahe',img_color)
+            #cv2.setWindowTitle("clahe", "color")
+
+            
+        # image couleur en calcium
+        if couleur == 'Calcium' :
+            # build a lookup table mapping the pixel values [0, 255] to
+            # their adjusted gamma values
+            gamma=1.2  # was 1
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            f1_gam= cv2.LUT(f_8, table)
+            
+            gamma=1 # was 0.8
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            f2_gam= cv2.LUT(f_8, table)
+            
+            gamma=1 # was 0.8
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            f3_gam= cv2.LUT(f_8, table)
+            
+            # i1: bleu, i2: vert, i3:rouge
+            i1=(f1_gam*1).astype('uint8')     # was 0.05 - 1 trop pale - 0.1 ok
+            i2=(f2_gam*0.7).astype('uint8')       # is 1
+            i3=(f3_gam*0.7).astype('uint8')       # was 0.8 un peu trop violet
+            
+            gamma=1 # gam total image finalement aucun, 1.2 un peu fade
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            i1= cv2.LUT(i1, table)
+            i2= cv2.LUT(i2, table)
+            i3= cv2.LUT(i3, table)
+            
+            img_color=np.zeros([frame_contrasted.shape[0], frame_contrasted.shape[1], 3],dtype='uint8')
+            img_color[:,:,0] = np.array(i1, dtype='uint8') # blue
+            img_color[:,:,1] = np.array(i2, dtype='uint8') # green
+            img_color[:,:,2] = np.array(i3, dtype='uint8') # red
+            
+            vp=np.percentile(f_8, 99.7)
+            alpha=(255//2)/(vp*0.5)
+            #print('alpha ', alpha)
+            
+            img_color=cv2.convertScaleAbs(img_color, alpha=alpha) # was 1.5 ok
+            
+            # affiche dans clahe window for test
+            #cv2.imshow('clahe',img_color)
+            #cv2.setWindowTitle("clahe", "color")
+        
+        # image couleur en jaune-orange (helium, sodium, continuum)
+        if couleur == 'Pale' :
+            # build a lookup table mapping the pixel values [0, 255] to
+            # their adjusted gamma values
+            gamma=1  # 
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            f1_gam= cv2.LUT(f_8, table)
+            
+            gamma=1 # was 0.7
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            f2_gam= cv2.LUT(f_8, table)
+            
+            gamma=1 # 
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            f3_gam= cv2.LUT(f_8, table)
+            
+            # i1: bleu, i2: vert, i3:rouge
+            i1=(f1_gam*0.92).astype('uint8')     # was 0.5 
+            i2=(f2_gam*0.98).astype('uint8')       # was 0.9
+            i3=(f3_gam*1).astype('uint8')       # is 1
+            
+            gamma=0.5 # gam total image 1 trop fade, 0.7 pas mal
+            invGamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** invGamma) * 255
+            for i in np.arange(0, 256)]).astype("uint8")
+                # apply gamma correction using the lookup table
+            i1= cv2.LUT(i1, table)
+            i2= cv2.LUT(i2, table)
+            i3= cv2.LUT(i3, table)
+            
+                
+            img_color=np.zeros([frame_contrasted.shape[0], frame_contrasted.shape[1], 3],dtype='uint8')
+            img_color[:,:,0] = np.array(i1, dtype='uint8') # blue
+            img_color[:,:,1] = np.array(i2, dtype='uint8') # green
+            img_color[:,:,2] = np.array(i3, dtype='uint8') # red
+            
+            #alpha=(255//2+50)/pos_max
+            #alpha=1
+            #print('alpha ', alpha)
+            #img_color=cv2.convertScaleAbs(img_color, alpha=alpha) # was 1
+            
+            # affiche dans clahe window for test
+            #cv2.imshow('clahe',img_color)
+            #cv2.setWindowTitle("clahe", "color")
+        
+        #img_color=cv2.flip(img_color,0)
+        
+        #cv2.imshow('clahe',img_color)
+        #cv2.setWindowTitle("clahe", "color")
+            
+        cv2.imwrite(basefich+suff+'_color_'+str(couleur)+'.png',img_color)
+        
+        if cfg.LG == 1:
+            logme("Couleur : "+ str(couleur))
+        else:
+            logme("Color : "+ str(couleur))
+        
+        return img_color
+
+def seuil_image (img):
+    Seuil_haut=np.percentile(img,99.999)
+    Seuil_bas=(Seuil_haut*0.25)
+    img[img>Seuil_haut]=Seuil_haut
+    img_seuil=(img-Seuil_bas)* (65535/(Seuil_haut-Seuil_bas)) # was 65500
+    img_seuil[img_seuil<0]=0
+    
+    return img_seuil, Seuil_haut, Seuil_bas
+
+def seuil_image_force (img, Seuil_haut, Seuil_bas):
+    img[img>Seuil_haut]=Seuil_haut
+    img_seuil=(img-Seuil_bas)* (65535/(Seuil_haut-Seuil_bas)) # was 65500
+    img_seuil[img_seuil<0]=0
+    
+    return img_seuil
 
 def get_lum_moyenne(img) :
     # ajout calcul intensité moyenne sur ROI centrée
@@ -362,8 +644,8 @@ def mouse_event_callback( event,x,y,flags,params):
             cv2.setTrackbarPos('Seuil haut','sliders',sh)
             if source_window == 'protus' :
 
-                cv2.setTrackbarMax('Seuil haut', 'sliders', 50)
-                cv2.setTrackbarMax('Seuil bas', 'sliders', 50) 
+                cv2.setTrackbarMax('Seuil haut', 'sliders', 100) #was 50
+                cv2.setTrackbarMax('Seuil bas', 'sliders', 100) #was 50
             else :
                 cv2.setTrackbarMax('Seuil haut', 'sliders', 255)
                 cv2.setTrackbarMax('Seuil bas', 'sliders', 255) 
@@ -623,6 +905,11 @@ def UI_graph():
     
     return c, g
 
+#-------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------
+# Interface INTI
+#-------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------
 
 def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, poly, pos_free_blue, 
                   pos_free_red,free_shift, zee_shift, win_pos, previous_serfile, data_entete,saved_angP,Flags, size_pix_cam, bin_cam, screen_scale):
@@ -642,12 +929,14 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Flags["VOL"]=False
     Flags["POL"]=False
     Flags["WEAK"]=False
-
- 
-    
-    
+   
     Racines=[]
     list_wave=[['Manual','Ha','Ha2cb','Cah','Cah1v','Cak','Cak1v','HeID3'],[0,6562.762,6561.432,3968.469,3966.968,3933.663,3932.163,5877.3]]
+    
+    if cfg.LG == 1 :
+        LG_str='FR'
+    else :
+        LG_str='EN'
 
     if cfg.LG == 1 :
         colonne0=[
@@ -669,6 +958,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 [sg.Checkbox('Réduction de bruit (modes general, magnétogramme, libre)', default=Flags['NOISEREDUC'], key='-NOISEREDUC-')],
                 [sg.Checkbox(' Sauve  paramètres polynome pour magnétogramme et libre ', default=Flags['SAVEPOLY'], key='-SAVEPOLY-')],
                 [sg.Checkbox(' Autocrop', default=Flags['Autocrop'], key='-AUTOCROP-')],
+                [sg.Checkbox(' Stonyhurst', default=Flags['Grid'], key='-GRID-', enable_events=True)],
                 [sg.Checkbox(' Force les valeurs tilt et facteur d\'échelle', default=False, key='-F_ANG_SXSY-')],
                 [sg.Text('Angle Tilt en degrés :', size=(15,1)), sg.Input(default_text=saved_tilt, size=(6,1),key='-TILT-')],
                 [sg.Text('Ratio SY/SX :', size=(15,1)), sg.Input(default_text=saved_ratio, size=(6,1),key='-RATIO-')]
@@ -681,6 +971,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 [sg.Checkbox('Noise reduction (general and free modes)', default=Flags['NOISEREDUC'], key='-NOISEREDUC-')],
                 [sg.Checkbox(' Save polynome parameters for magnetogram and free ', default=Flags['SAVEPOLY'], key='-SAVEPOLY-')],
                 [sg.Checkbox(' Autocrop', default=Flags['Autocrop'], key='-AUTOCROP-')],
+                [sg.Checkbox(' Stonyhurst', default=Flags['Grid'], key='-GRID-', enable_events=True)],
                 [sg.Checkbox(' Force values of tilt and scale ratio', default=False, key='-F_ANG_SXSY-')],
                 [sg.Text('Tilt angle in degrees :', size=(15,1)), sg.Input(default_text=saved_tilt, size=(6,1),key='-TILT-')],
                 [sg.Text('SY/SX ratio :', size=(15,1)), sg.Input(default_text=saved_ratio, size=(6,1),key='-RATIO-')]
@@ -869,7 +1160,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 sg.Tab('Magnétogramme',tab4_layout,),
                 sg.Tab('Raie libre', tab5_layout)]],change_submits=True,key="TabGr",title_color='#796D65',tab_background_color='#404040')],  
             [sg.Button('Ok', size=(14,1)), sg.Cancel('  Sortir  ')],
-            [sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
+            [sg.Button(button_text=LG_str, key='-LANG-', font=("Arial", 8),border_width=0, button_color='#404040'),sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
             ]
     else:
         layout = [
@@ -882,7 +1173,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 sg.Tab('Magnetogram',tab4_layout,),
                 sg.Tab('Free line', tab5_layout)]],change_submits=True,key="TabGr",title_color='#796D65',tab_background_color='#404040')],  #title_color='#796D65',
             [sg.Button('Ok', size=(14,1)), sg.Cancel('  Exit  ')],
-            [sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
+            [sg.Button(button_text=LG_str, key='-LANG-',font=("Arial", 8), border_width=0, button_color='#404040'),sg.Text(current_version, size=(30, 1),text_color='Tan', font=("Arial", 8, "italic"))]
             ]
             
     
@@ -910,6 +1201,21 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
         if event==sg.WIN_CLOSED or event=='  Exit  ' or event=='  Sortir  ': 
             Flag_sortie=True
             break
+        
+        if event == '-LANG-' :
+            if window['-LANG-'].get_text() == 'FR' :
+                window['-LANG-'].update('EN')
+                cfg.LG=2
+                my_dictini['lang']='EN'
+            else :
+                window['-LANG-'].update('FR')
+                cfg.LG=1
+                my_dictini['lang']='FR'
+                
+        if event == '-GRID-' :
+            Flags['Grid'] = values['-GRID-']
+
+                
         if event=="-PROFIL-":
             # charge le fichier profil .dat
             WorkDir=os.path.dirname(values['-FILE-'])+os.path.sep
@@ -1023,9 +1329,9 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                         window['-DATEOBS-'].update(fits_dateobs)
                     except:
                         if cfg.LG==1 :
-                            logme('Erreur ouverture fichier : '+serfile)
+                            logme('Erreur datetime fichier SER : '+serfile)
                         else:
-                            logme('File open error : '+serfile)
+                            logme('File datetime error : '+serfile)
                     
                     
         if event=="-LASTFILE-":
@@ -1224,6 +1530,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Flags["FLIPNS"] = values['-NS_FLIP-']
     Flags["FITS3D"] = values['-FITS3D-']
     Flags["Autocrop"] = values['-AUTOCROP-']
+    Flags["Grid"] = values['-GRID-']
     Flags["DOPFLIP"] = values['-DOP_FLIP-']
     Flags["FORCE"] = values["-F_ANG_SXSY-"]
     Flags["SAVEPOLY"] = values["-SAVEPOLY-"]
@@ -1355,7 +1662,10 @@ while not Flag_sortie :
         screen_scale = 1
         screen_scaleZ=1
     
-    
+# --------------------------------------------------------------------------------------
+# recuperation des parametres de configuration memorisé au dernier traitement
+# --------------------------------------------------------------------------------------
+
     # inti.yaml is a bootstart file to read last directory used by app
     # this file is stored in the module directory
     
@@ -1371,10 +1681,9 @@ while not Flag_sortie :
                 'win_posx':300, 'win_posy':200, 'screen_scale':0,'observer':'', 'instru':'','site_long':0, 'site_lat':0,
                 'angle P':0,'contact':'','wavelength':0, 'wave_label':'Manuel', 'inversion NS':0, 'inversion EW':0,
                 'autocrop':1, 'pos fente min':0, 'pos fente max':0,'crop fixe hauteur':0, 'crop fixe largeur':0,
-                "zeeman_shift":0, "reduction bruit":0}
-    #print('myini de depart:', my_ini)
+                "zeeman_shift":0, "reduction bruit":0, 'grid disk':'on', 'lang' :'FR'}
+
     poly=[]
-    
     
     try:
         #my_ini=os.path.dirname(sys.argv[0])+'/inti.yaml'
@@ -1467,6 +1776,19 @@ while not Flag_sortie :
         Flags['NOISEREDUC'] = 0
     else :
         Flags['NOISEREDUC']=my_dictini['reduction_bruit']
+        
+    if 'grid disk' not in my_dictini:
+        # si pas dans fichier ini
+        my_dictini['grid disk']='on'
+        grid_on=True
+        Flags['Grid'] = 1
+    else :
+        if my_dictini['grid disk'] == 'on' :
+            grid_on=True
+            Flags['Grid'] = 1
+        else :
+            grid_on=False
+            Flags['Grid'] = 0
     
     # param cas difficiles
     if 'crop fixe hauteur' not in my_dictini:
@@ -1486,6 +1808,15 @@ while not Flag_sortie :
             screen_scale=float(my_dictini['screen_scale'])
             if screen_scale >= 1 :      
                 screen_scaleZ=2     # facteur de zoom
+                
+    #gestion langue dans inti.yaml
+    if 'lang' not in my_dictini :
+        my_dictini['lang']='FR'
+        LG_str='FR'
+    else :
+        LG_str = my_dictini['lang']
+        if LG_str == 'FR' : cfg.LG=1
+        if LG_str !='FR' : cfg.LG=2
         
     
     param=[my_dictini['pos fente min'],my_dictini['pos fente max'],my_dictini['crop fixe hauteur'],my_dictini['crop fixe largeur']]
@@ -1493,24 +1824,27 @@ while not Flag_sortie :
     data_entete=[my_dictini['observer'], my_dictini['instru'],float(my_dictini['site_long']),float(my_dictini['site_lat']),my_dictini['contact'],
                  my_dictini['wavelength'],my_dictini['wave_label']]
     
-    
-    
-    # Recupere paramatres de la boite de dialogue
-    #print('serfile previous : ', previous_serfile)
+
+# ------------------------------------------------------------------------------------    
+# Lance GUI 
+# ------------------------------------------------------------------------------------    
+
     serfiles, Shift, Flags, ratio_fixe,ang_tilt, poly, racines, data_entete,ang_P,solar_dict, size_pix_cam, bin_cam, grid_graph= UI_SerBrowse(WorkDir, saved_tilt, saved_ratio,
                                                                              dec_pix_dop, dec_pix_cont, poly,pos_free_blue, pos_free_red,free_shift,zee_shift,
                                                                              win_pos, previous_serfile, data_entete,saved_angP, Flags,
                                                                              size_pix_cam, bin_cam, screen_scale)
+    
+    # recupere les fichiers
     serfiles=serfiles.split(';')
     #print('serfile : ',  len(serfiles))
     if len(serfiles)==1 :
-        #print('ok')
         previous_serfile=os.path.basename(serfiles[0])
-        #print('serfile previous : ', previous_serfile)
+
+    # init seq number pour magnetogramme
     ii=1
+    # permet de ne pas fermer INTI et d'entrer de nouveaux fichiers à traiter
     Flag_sortie=Flags["sortie"]
 
-    
     # pour gerer la tempo des affichages des images resultats dans cv2.waitKey
     # si plusieurs fichiers à traiter
     if len(serfiles)==1:
@@ -1520,7 +1854,39 @@ while not Flag_sortie :
     else:
         tempo=1000 #temp 1 sec
         
-    # boucle sur la liste des fichers
+# ------------------------------------------------------------------------------------             
+# sauvegarde des param de lang et rep dans fichier de configuration avant traitement
+
+    # met a jour le repertoire et les flags dans le fichier ini, oui a chaque fichier pour avoir le bon rep
+    my_dictini['directory']=WorkDir
+    LG_str = my_dictini['lang']
+    
+    if Flags['Grid']==True :
+        my_dictini['grid disk']='on'
+    else:
+        my_dictini['grid disk']='off'
+
+    if cfg.LG ==1 :
+        my_dictini['lang']='FR'
+    else :
+        my_dictini['lang']='EN'
+       
+    try:
+        with open(my_ini, "w") as f1:
+            yaml.dump(my_dictini, f1, sort_keys=False)
+    except:
+        if cfg.LG == 1:
+            logme ('Erreur lors de la sauvegarde de inti.yaml comme : '+my_ini)
+        else:
+            logme ('Error saving inti.yaml as: '+my_ini)
+    
+        
+# -----------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------       
+# boucle sur la liste des fichers
+# -----------------------------------------------------------------------------------------   
+# -----------------------------------------------------------------------------------------  
+ 
     for serfile in serfiles:
         #print (serfile)
         
@@ -1544,6 +1910,7 @@ while not Flag_sortie :
            os.makedirs(subrep)
         # extrait nom racine
         base=os.path.basename(serfile)
+        # basefich: nom du fichier ser sans extension et sans repertoire
         basefich=os.path.splitext(base)[0]
         if base=='':
             if cfg.LG == 1:
@@ -1551,21 +1918,24 @@ while not Flag_sortie :
             else:
                 logme('File name error: '+serfile)
             sys.exit()
-         
-          
-        # appel au module d'extraction, reconstruction et correction
-        #
-        # basefich: nom du fichier ser sans extension et sans repertoire
-        # dx: decalage en pixel par rapport au centre de la raie 
+
+# ------------------------------------------------------------------------------------                     
+# appel au module d'extraction, reconstruction et correction
+# ------------------------------------------------------------------------------------     
         
+        # ajout d'un ordre de sequence pour mode magnetorgramme
         if Flags['POL'] and ii>1:
             ratio_fixe=geom[0]
             ang_tilt=geom[1]
         
-        # 11 aout 22 ajout coef polynome en param de retour
+        # lance ser_recon
         frames, header, cercle, range_dec, geom, polynome=sol.solex_proc(serfile,Shift,Flags,ratio_fixe,ang_tilt, 
                                                                          poly, data_entete,ang_P, solar_dict, param)
-        
+
+
+# ------------------------------------------------------------------------------------             
+# sauvegarde des param dans fichier de configuration
+
         # met a jour le repertoire et les flags dans le fichier ini, oui a chaque fichier pour avoir le bon rep
         my_dictini['directory']=WorkDir
         # ajout data entete
@@ -1581,6 +1951,7 @@ while not Flag_sortie :
         my_dictini['size_pix_cam']=size_pix_cam
         my_dictini['bin_cam']=bin_cam
         my_dictini['autocrop']=Flags['Autocrop']
+        my_dictini['grid disk']=Flags['Grid']
         my_dictini['pos fente min']=param[0]
         my_dictini['pos fente max']=param[1]
         my_dictini['crop fixe hauteur']=param[2]
@@ -1589,6 +1960,12 @@ while not Flag_sortie :
         my_dictini['zeeman_shift'] = Shift[4]
         my_dictini['reduction_bruit'] = Flags['NOISEREDUC']
         my_dictini['screen_scale'] = screen_scale
+        LG_str = my_dictini['lang']
+
+        if cfg.LG ==1 :
+            my_dictini['lang']='FR'
+        else :
+            my_dictini['lang']='EN'
         
         if Flags['WEAK']:
             my_dictini['free_autopoly']=Flags['FREE_AUTOPOLY']
@@ -1627,7 +2004,7 @@ while not Flag_sortie :
             my_dictini['poly_free_a']=float(polynome[0])
             my_dictini['poly_free_b']=float(polynome[1])
             my_dictini['poly_free_c']=float(polynome[2])
-     
+        
         
         try:
             with open(my_ini, "w") as f1:
@@ -1637,17 +2014,22 @@ while not Flag_sortie :
                 logme ('Erreur lors de la sauvegarde de inti.yaml comme : '+my_ini)
             else:
                 logme ('Error saving inti.yaml as: '+my_ini)
+
+# ------------------------------------------------------------------------------------             
+# formation des noms de base des fichiers
         
-        #t0=time.time()
+        # le noms de bases des fichiers
+        # basefich: nom du fichier ser sans extension et sans repertoire
         base=os.path.basename(serfile)
         basefich='_'+os.path.splitext(base)[0]
         basefich_comple="Complements"+os.path.sep+basefich
         basefich_bass="BASS2000"+os.path.sep+basefich
         basefich_clahe="Clahe"+os.path.sep+basefich
         #print(basefich_comple, basefich_bass, basefich_clahe)
-        
+ 
+# ------------------------------------------------------------------------------------             
+# gestion taile fentere avec ecran, surtout ecran 4K
 
-        
         ih = frames[0].shape[0]
         newiw = frames[0].shape[1]
         #print('newimg w et h', newiw,ih)
@@ -1671,7 +2053,9 @@ while not Flag_sortie :
         nh = screensizeH/ih
         sc=min(nw,nh)
 
-        
+# ------------------------------------------------------------------------------------             
+# lecture sur le disque des images fits 16 bits crées par Ser_recon raw et recon
+    
         # Lecture et affiche image disque brut
         if range_dec[0]==0 :
             if Shift[0] ==0 :
@@ -1688,7 +2072,7 @@ while not Flag_sortie :
         riw=hdu.header['NAXIS1']
         Disk=np.reshape(myspectrum, (rih,riw))
         
-        # Lecture nom filename  image recon
+        # Lecture  image recon
         if range_dec[0]==0:
             if Shift[0] ==0 :
                 ImgFile=basefich+'_recon.fits'   
@@ -1700,14 +2084,18 @@ while not Flag_sortie :
         hdulist = fits.open(ImgFile, memmap=False)
         hdu=hdulist[0]
         base_filename=hdu.header['FILENAME'].split('.')[0]
-        #print('filename : ',base_filename)
         
-        Ratio_lum=(65536/np.max(Disk))*0.8
+        # facteur de brightness sur image raw uniquement
+        #Ratio_lum=(65536/np.max(Disk))*0.8
+        Ratio_lum=(65535/np.max(Disk))
+        #print ('ratio_lum ', Ratio_lum)
+        #print ('max Disk ', np.max(Disk))
         Disk2=np.array((np.copy(Disk)*Ratio_lum),dtype='uint16')
         hdulist.close()
         
-        
-        # prepare fenetres pour affichage des images
+# ------------------------------------------------------------------------------------             
+# prepare fenetres pour affichage des images
+
         # variable top_w gere en fait la position horizonatale
         # left_w la position verticale
         cv2.namedWindow('Raw', cv2.WINDOW_NORMAL)
@@ -1733,9 +2121,6 @@ while not Flag_sortie :
         cv2.moveWindow('clahe', top_w, left_w)
         cv2.resizeWindow('clahe',(int(newiw*sc), int(ih*sc)))
         
-        
-              
-        
         # ne fait un zoom que si on traite un seul fichier et pas doppler/continuum
         if len(frames)==1 and len(serfiles)==1:
             cv2.namedWindow('Zoom', cv2.WINDOW_NORMAL)
@@ -1749,22 +2134,21 @@ while not Flag_sortie :
             
             cv2.createTrackbar('Seuil haut', 'sliders', 0,255, on_change_slider)
             cv2.createTrackbar('Seuil bas', 'sliders', 0,255, on_change_slider)
-    
-       
-        
-        # png image generation
+
+# ------------------------------------------------------------------------------------             
+# png image generation 
+# ------------------------------------------------------------------------------------             
+
         # image seuils moyen
         frame1=np.copy(frames[0])
-        #Seuil_bas=np.percentile(frame1, 25)
-        #Seuil_haut=np.percentile(frame1,99.9999)
         sub_frame=frame1[5:,:-5]
         Seuil_haut=np.percentile(sub_frame,99.999)
-        Seuil_bas=(Seuil_haut*0.15)
+        Seuil_bas=(Seuil_haut*0.05) # was 0.15
         frame1[frame1>Seuil_haut]=Seuil_haut
         #print('seuil bas', Seuil_bas)
         #print('seuil haut', Seuil_haut)
         
-        fc=(frame1-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
+        fc=(frame1-Seuil_bas)* (65535/(Seuil_haut-Seuil_bas)) # was 65500
         fc[fc<0]=0
         frame_contrasted=np.array(fc, dtype='uint16')
         
@@ -1789,112 +2173,69 @@ while not Flag_sortie :
        
         cv2.imshow('contrast',frame_contrasted)
         
-        
-        
-        #cv2.imshow('sun',frame_contrasted)
-        #cv2.waitKey(0)
     
         # image raw
         Disk2=cv2.flip(Disk2,0)
         cv2.imshow('Raw',Disk2)
         
-        # image seuils protus 
-        frame1=np.copy(frames[0])
-        sub_frame=frame1[5:,:-5]
-        Seuil_haut=np.percentile(sub_frame,99.999)
-        Seuil_bas=(Seuil_haut*0.25)
-        #print('seuil bas HC', Seuil_bas)
-        #print('seuil haut HC', Seuil_haut)
-        frame1[frame1>Seuil_haut]=Seuil_haut
-        fc2=(frame1-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
-        fc2[fc2<0]=0
-        frame_contrasted2=np.array(fc2, dtype='uint16')
-        frame_contrasted2=cv2.flip(frame_contrasted2,0)
-        #cv2.imshow('contrast',frame_contrasted2)
-        #cv2.waitKey(0)
+        # image protus 
         
-        if 2==1:   
-            # image seuils protus original
-            frame1=np.copy(frames[0])
-            Seuil_haut=np.percentile(frame1,99.9999)*0.18
-            Seuil_bas=0
-            frame1=seuil_image_force(frame1, Seuil_haut, Seuil_bas)
-            frame_contrasted3=np.array(frame1, dtype='uint16')
+        # hide disk before setting max threshold
+        frame2=np.copy(frames[0])
+        disk_limit_percent=0.002 # black disk radius inferior by 2% to disk edge (was 1%)
+        if cercle[0]!=0:
+            x0=cercle[0]
+            y0=cercle[1]
+            #wi=round(cercle[2])
+            #he=round(cercle[3])
+            wi=int(cercle[2])
+            he=int(cercle[3])
+            r=(min(wi,he))
+            r=int(r- round(r*disk_limit_percent))-1 # retrait de 1 pixel modif de juin 2023
+            #print('c0,c1', cercle[0], cercle[1])
+            #print(cercle, wi,he,r)
+            # MattC but prefer to really see deviation from circle
+            fc3=cv2.circle(frame2, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
+            #frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
+            frame1=np.copy(fc3)
+            Threshold_Upper=np.percentile(frame1,99.9999)*0.6  #preference for high contrast was 0.5
+            Threshold_low=0
+            img_seuil=seuil_image_force(frame1, Threshold_Upper, Threshold_low)
             
-            #calcul du disque noir pour mieux distinguer les protuberances
-            if cercle[0]!=0:
-                x0=cercle[0]
-                y0=cercle[1]
-               
-                wi=round(cercle[2]*0.998)
-                he=round(cercle[3]*0.998)
+            frame_contrasted3=np.array(img_seuil, dtype='uint16')
             
-            r=int(min(wi,he)-3)
-            r=int(r-round(0.002*r))
-            #c=(0,0,0)
-            frame_contrasted3=cv2.circle(frame_contrasted3, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
-            #frame_contrasted3=cv2.ellipse(frame_contrasted3, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC apply tilt, change color to black
+            if len(frames)==1 and len(serfiles)==1:
+                param=np.copy(frame_contrasted3)
+                param2=np.copy(fc3)
+                paramh=Threshold_Upper
+                paramb=Threshold_low
+                source_window = 'protus'
+                cv2.setMouseCallback('protus',mouse_event_callback, [source_window,param,param2, paramh, paramb])
+            
             frame_contrasted3=cv2.flip(frame_contrasted3,0)
             cv2.imshow('protus',frame_contrasted3)
-            #cv2.waitKey(0)
-        
-        #improvements suggested by mattC to hide sun with disk
-        else :           
-            # hide disk before setting max threshold
-            frame2=np.copy(frames[0])
-            disk_limit_percent=0.002 # black disk radius inferior by 2% to disk edge (was 1%)
-            if cercle[0]!=0:
-                x0=cercle[0]
-                y0=cercle[1]
-                #wi=round(cercle[2])
-                #he=round(cercle[3])
-                wi=int(cercle[2])
-                he=int(cercle[3])
-                r=(min(wi,he))
-                r=int(r- round(r*disk_limit_percent))-1 # retrait de 1 pixel modif de juin 2023
-                #print('c0,c1', cercle[0], cercle[1])
-                #print(cercle, wi,he,r)
-                # prefer to really see deviation from circle
-                fc3=cv2.circle(frame2, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
-                #frame2=cv2.ellipse(frame2, (x0,y0),(wi,he),0,0,360,(0,0,0),-1,lineType=cv2.LINE_AA ) #MattC draw ellipse, change color to black
-                frame1=np.copy(fc3)
-                Threshold_Upper=np.percentile(frame1,99.9999)*0.5  #preference for high contrast
-                Threshold_low=0
-                img_seuil=seuil_image_force(frame1, Threshold_Upper, Threshold_low)
-                
-                frame_contrasted3=np.array(img_seuil, dtype='uint16')
-                
-                if len(frames)==1 and len(serfiles)==1:
-                    param=np.copy(frame_contrasted3)
-                    param2=np.copy(fc3)
-                    paramh=Threshold_Upper
-                    paramb=Threshold_low
-                    source_window = 'protus'
-                    cv2.setMouseCallback('protus',mouse_event_callback, [source_window,param,param2, paramh, paramb])
 
-                
-                frame_contrasted3=cv2.flip(frame_contrasted3,0)
-                cv2.imshow('protus',frame_contrasted3)
+        else:
+            if cfg.LG == 1:
+                print("Erreur disque occulteur.")
             else:
-                if cfg.LG == 1:
-                    print("Erreur disque occulteur.")
-                else:
-                    print("Mask disk error.")
-                    
-                frame_contrasted3=frame_contrasted
+                print("Mask disk error.")
+                
+        #frame_contrasted3=frame_contrasted
         
         # create a CLAHE object (Arguments are optional)
-        #clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(5,5))
         clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
         cl1 = clahe.apply(frames[0])
         
         Seuil_bas=np.percentile(cl1, 25)
         Seuil_haut=np.percentile(cl1,99.9999)*1.05
-        cc=(cl1-Seuil_bas)*(65000/(Seuil_haut-Seuil_bas))
+        if Seuil_haut>65535 :
+            Seuil_haut=65535
+        cc=(cl1-Seuil_bas)*(65535/(Seuil_haut-Seuil_bas))
         cc[cc<0]=0
         cc=np.array(cc, dtype='uint16')
         
-
+        # creation des sliders
         if len(frames)==1 and len(serfiles)==1:
             param=np.copy(cc)
             param2=np.copy(cl1)
@@ -1913,6 +2254,8 @@ while not Flag_sortie :
         cc=cv2.flip(cc,0)
         cv2.imshow('clahe',cc)
 
+# ------------------------------------------------------------------------------------             
+# si traitement de plus d'une longueur d'onde
         
         if len(frames) >1:
             if len(frames)>3:
@@ -2056,9 +2399,7 @@ while not Flag_sortie :
                     cv2.imshow('doppler',img_weak)
                     cv2.setWindowTitle("doppler", "free line")
                     img_weak_array=d
-                    
                 
-               
                 except:
                     if cfg.LG == 1:
                         print ('Erreur image ')
@@ -2071,31 +2412,41 @@ while not Flag_sortie :
                 #sauvegarde en png de doppler
                 if flag_erreur_weak==False:
                     cv2.imwrite(basefich+'_free'+'.png',img_weak)
+
+# ------------------------------------------------------------------------------------             
+# sauve les png raw, disk, inversée et mix, colorisée
         
-        #sauvegarde en png disk quasi sans seuillage de image sans decalage
+        #sauvegarde en png de l'image raw, avant correction geomtrique et flat
         if range_dec[0]==0:
             img_suffix=""
-            #print(basefich+img_suffix+'_raw.png')
             cv2.imwrite(basefich_comple+img_suffix+'_raw.png',Disk2)
         else:
             img_suffix="_dp"+str(range_dec[0])
-            
+        
         #sauvegarde en png disk quasi seuils max
-        #print(basefich+img_suffix+'_disk.png')
         cv2.imwrite(basefich+img_suffix+'_disk.png',frame_contrasted)
+        
+        # image contraste inversé
         frame_sub=65535-frame_contrasted
         cv2.imwrite(basefich+img_suffix+'_inv.png',frame_sub)
         # test mix mais c'est moche...
-        #frame_combo=np.maximum(frame_contrasted3, frame_contrasted)
-        #frame_combo[frame_combo==65535]=0
-        #cv2.imwrite(basefich+img_suffix+'_mix.png',frame_combo)
-
-        if Flags["POL"] != True  and  Flags["WEAK"] != True :      
-            #print(base_filename+'.jpg')
-            cv2.imwrite("BASS2000"+os.path.sep+base_filename+'.jpg',frame_contrasted*0.0038)
-            #print(base_filename+'_protus.jpg')
-            cv2.imwrite("BASS2000"+os.path.sep+base_filename+'_protus.jpg',frame_contrasted3*0.0038)
+        frame_sub[frame_sub==65535]=1000
+        frame_combo=np.maximum(frame_contrasted3, frame_contrasted)
+        frame_combo[frame_combo==65535]=0
+        cv2.imwrite(basefich+img_suffix+'_mix.png',frame_combo)
+        # image colorisée
+        couleur = my_dictini['wave_label']
+        img_color = Colorise_Image(couleur, frame_contrasted, basefich, img_suffix)
+        
+        
+        # si pas de flag mode magneto et ou raie libre
+        if Flags["POL"] != True  and  Flags["WEAK"] != True : 
             
+            # sauve en format jpg pour BASS2000 si pas en manuel
+            if couleur != 'Manual' :
+                cv2.imwrite("BASS2000"+os.path.sep+base_filename+'.jpg',frame_contrasted*0.0038)
+                cv2.imwrite("BASS2000"+os.path.sep+base_filename+'_protus.jpg',frame_contrasted3*0.0038)
+
             # genere image avec stonyhurtdisk
             nomfich=basefich+img_suffix+'_disk.png'
             nomrep1=WorkDir
@@ -2109,8 +2460,8 @@ while not Flag_sortie :
             #hdr['CAR_ROT']=float(solar_dict['Carr'])
             fich_param['P']=0
             fich_param['PDisp']=0
-            grid_on=True
-            if grid_on :
+            #grid_on=True
+            if Flags ['Grid']==1 :
                 try :
                     fich_param['P'] = header['SOLAR_P']  # Only for display, INTI puts heliographic pole on top
                     fich_param['PDisp'],a,b,c=angle_P_B0 (fich_param['date'] ) # modif 14 janvier, il faut l'afficher
@@ -2141,21 +2492,20 @@ while not Flag_sortie :
                 graph_param['color_inv'] = 'black'
                 graph_param['disp']=False
                 
+                # creation et sauvegarde du fichier avec grille coor helio
                 sth.draw_stonyhurst(nomrep1, nomrep2,nomfich, fich_param, graph_param)
+ 
+# ------------------------------------------------------------------------------------             
+# sauve les png protus et clahe
         
         #sauvegarde en png seuils protus
         cv2.imwrite(basefich+img_suffix+'_protus.png',frame_contrasted3)
-        
-        #sauvegarde en png seuils serrés
-        #print(basefich+img_suffix+'_diskHC.png')
-        #cv2.imwrite(basefich+img_suffix+'_diskHC.png',frame_contrasted2)
 
         #sauvegarde en png de clahe
-        #print(basefich+img_suffix+'_clahe.png')
         cv2.imwrite(basefich_clahe+img_suffix+'_clahe.png',cc)
-        
-        
-        # sauve les png multispectraux et cree une video
+
+# ------------------------------------------------------------------------------------             
+# sauve les png multispectraux et cree une video
        
         if (Flags["VOL"] or Flags["POL"]) and len(range_dec)!=1:
             
@@ -2266,33 +2616,9 @@ while not Flag_sortie :
                 out and out.release()
                 #cv2.destroyAllWindows() 
                     
-        
-        """
-        #create colormap
-        im = cv2.imread(basefich+'_clahe.png')
-        im_max=(np.amax(im))*1.3
-        im[im>im_max]=200
-        #print ('im_max : ',im_max)
-        scale=255/im_max
-        imnp=np.array(im*scale, dtype='uint8')
-        imC = cv2.applyColorMap(imnp, cv2.COLORMAP_HOT)
-        iw=int(imC.shape[1]*sc)
-        ih=int(imC.shape[0]*sc)
-        cv2.resize(imC,dsize=(ih,iw))
-        cv2.namedWindow('color', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('color', iw, ih)
-        top_w=top_w+tw
-        left_w=left_w+lw
-        cv2.moveWindow('color',top_w, left_w)
-        cv2.imshow('color',imC)
-        cv2.waitKey(tempo)
-        cv2.imwrite(basefich+'_color.png',imC)
-        """
-        #t1=time.time()
-        #print('affichage : ', t1-t0)
-    
-
-        #sauvegarde les fits
+ # ------------------------------------------------------------------------------------      
+ # sauvegarde les fits
+ 
         frame2=np.copy(frames[0])
         if Flags['WEAK']:
             frame2=np.copy(img_weak_array)
@@ -2367,36 +2693,17 @@ while not Flag_sortie :
             DiskHDU.writeto(filename_3D, overwrite='True')
             
     
-        # V3.2 -> deplace tempo après sauvegarde des fichiers
+# -----------------------------------------------------------------------------------------      
+# Affichage des images resultats
+# -----------------------------------------------------------------------------------------   
+
         cv2.waitKey(tempo)
         
+        # mise en attente action utilisateur ou tempo
         cv2.destroyAllWindows()
           
-        """
-        not really useful, too small, better to use png or fits
-        and strange message on spyder when UI display "can't invoke "event" command"
-        seems to be linked to tk (procedure "ttk::ThemeChanged" line 6)
-        
-        # ajout de feuille de summary
-        screen = tk.Tk()
-        screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()
-        screen.destroy()
-        im_1= cv2.hconcat([frame_contrasted, frame_contrasted2])
-        im_2=cv2.hconcat([frame_contrasted3, cc])
-        im=cv2.vconcat([im_1,im_2])
-        scale=min(screensize[0]/im.shape[1], screensize[1]/im.shape[0])
-        cv2.namedWindow('summary', cv2.WINDOW_NORMAL)
-        cv2.moveWindow('summary', 0,0)
-        cv2.resizeWindow('summary', int(im.shape[1]*scale), int(im.shape[0]*scale))
-        cv2.imshow('summary', im)
-    
-        #sauvegarde en png pour appliquer une colormap par autre script
-        cv2.imwrite(basefich+'_summary.png',im)
-    
-        cv2.waitKey(tempo)
-        cv2.destroyAllWindows()
-        """
+        # utile de rappeler le nom du dernier fichier traité sans avoir a remonter dans les logs
         print (serfile)
         ii=ii+1 # boucle sur non de fichier pour generer sequence en polarimetrie
-        print()
+        print() # ligne vide pour separer log des prochain traitement
 

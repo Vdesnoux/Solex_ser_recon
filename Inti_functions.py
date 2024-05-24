@@ -123,7 +123,7 @@ def detect_bord (img, axis, offset, flag_disk):
     #img_c[-1,:]=0
     
     img_c[0,:]= np.percentile(img,10) # pour meilleure detection bord pour soleil partiel
-    img_c[-1,:]=np.percentile(img,10)
+    img_c[-1,:]=np.percentile(img,10) # pas top, a revoir pour scan avec bcp de diffusé
     
     
     #guillaume
@@ -131,7 +131,7 @@ def detect_bord (img, axis, offset, flag_disk):
         img_c[0:7,:]=np.percentile(img_c, 15) # valeur du fond noir sur
         img_c[-7:,:]=np.percentile(img_c, 15) # valeur du fond noir sur
         #print('LOWDYN percentile 15', np.percentile(img_c, 15))
-
+    
     
     # on part de cette image pour la detection haut bas
     ih=img.shape[0]
@@ -166,7 +166,7 @@ def detect_bord (img, axis, offset, flag_disk):
             plt.imshow(img_c)
             plt.show()
             plt.plot(ymean)
-            plt.title('Profil Y')
+            plt.title('Profil Y bord')
             plt.show()
         
         ymean=gaussian_filter1d(ymean, 11)
@@ -486,6 +486,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         b=np.percentile(li,97)
         bb=b*0.7 #retour à 0.7 sinon accroche sur zones trop noires
         
+        
         if cfg.LowDyn :
             #guillaume
             bb=b*0.9 # faible dynamique, ne pas trop clamper
@@ -680,6 +681,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         plt.show()
     
     if not cfg.LowDyn : # echec du fit polynomial en faible dynamique
+    # guillaume
     #if 1==1 : # echec du fit polynomial en faible dynamique
         polyB=[]
         polyY=[]
@@ -782,21 +784,7 @@ def fit_ellipse (myimg,X,disp_log):
 
     return EllipseFit, XE
 
-def seuil_image (img):
-    Seuil_haut=np.percentile(img,99.999)
-    Seuil_bas=(Seuil_haut*0.25)
-    img[img>Seuil_haut]=Seuil_haut
-    img_seuil=(img-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
-    img_seuil[img_seuil<0]=0
-    
-    return img_seuil, Seuil_haut, Seuil_bas
 
-def seuil_image_force (img, Seuil_haut, Seuil_bas):
-    img[img>Seuil_haut]=Seuil_haut
-    img_seuil=(img-Seuil_bas)* (65500/(Seuil_haut-Seuil_bas))
-    img_seuil[img_seuil<0]=0
-    
-    return img_seuil
 
 
 #=========================================================================================
