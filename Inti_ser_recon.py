@@ -33,6 +33,8 @@ Version en cours V6.0b > V6.0c>V6.0d > 6.1 a publier !
 6.1
 - nom fichier color avec la couleur pour ne pas ecraser couleur continuum
 - stonyhurst on/off dans les advanced settings
+6.1.1
+- fix selection Ha2cb 
 
 Version en cours Paris 5.8a>b>c>d> 6.0 publiée
 - gestion seuil max sliders pour protus à 50 au lieu de 255
@@ -318,16 +320,17 @@ def Colorise_Image (couleur, frame_contrasted, basefich, suff):
     
     # gestion couleur auto ou sur dropdown database compatibility
     # 'Manual','Ha','Ha2cb','Cah','Cah1v','Cak','Cak1v','HeID3'
-    if couleur == 'Manual' :
+    couleur_lbl=couleur
+    if couleur_lbl == 'Manual' :
         couleur = 'on' # mode detection auto basé sur histogramme simple
     else :
-        if couleur[:2] == 'Ha' :
+        if couleur_lbl[:2] == 'Ha' :
             couleur='H-alpha'
-        if couleur[:3] == 'Hac' :
+        if couleur_lbl[:3] == 'Ha2' :
             couleur='Pale'
-        if couleur[:2] == 'Ca' :
+        if couleur_lbl[:2] == 'Ca' :
             couleur='Calcium'
-        if couleur[:2] == 'He' :
+        if couleur_lbl[:2] == 'He' :
             couleur='Pale'
     
     f=frame_contrasted/256
