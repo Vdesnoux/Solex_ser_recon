@@ -1057,6 +1057,35 @@ def bin_to_spectre (img, y1, y2):
     pro= np.sum(array_tobin,axis=0)
 
     return pro
+
+def pic_histo (frame) :
+    # seuil adaptatif à partir histogram
+    
+    debug= False
+    
+    #calcul histo
+    f=frame/256
+    f_8=f.astype('uint8')
+    th_otsu,img_binarized=cv2.threshold(f_8, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    hist = cv2.calcHist([f_8],[0],None,[256],[0,256])
+    
+    if debug :
+        plt.title("hist  ")
+        plt.plot(hist)
+        plt.show()
+   
+    hist[0:int(th_otsu)]=0
+    pos_max=np.argmax(hist)
+    seuil_haut=(pos_max*256)
+    #print('pic histo disk :', seuil_haut)
+    #print('pic histo disk seuil :', seuil_haut*0.5)
+    
+    if debug  :
+        plt.title("flat  "+ str(pos_max))
+        plt.plot(hist)
+        plt.show()
+    
+    return seuil_haut
     
     
     

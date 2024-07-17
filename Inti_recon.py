@@ -214,6 +214,7 @@ try :
     from serfilesreader.serfilesreader import Serfile
 except ImportError : 
     from serfilesreader import Serfile
+    
 
 
 def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_P, solar_dict,param):
@@ -904,9 +905,6 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
         Calcul des mauvaises lignes et de la correction geometrique
         --------------------------------------------------------------------
         """
-        # guillaume
-        # elimine premiere colonne qui serait à zéro
-        #Disk[k][:,0]=4000
         
         iw=Disk[k].shape[1]
         ih=Disk[k].shape[0]
@@ -1101,7 +1099,7 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
         
         """
         --------------------------------------------------------------
-        Correction de flat - basse freq
+        Correction de non uniformity - basse freq
         --------------------------------------------------------------
         """
         frame=np.copy(img)
@@ -1127,9 +1125,37 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
             offset_y1=0
             offset_y2=0
         else:
-    
-            seuil_haut=np.percentile(frame,97) 
-            myseuil=seuil_haut*0.5 # seuillage pour segmentation disque solaire
+            
+            """
+            # seuil adaptatif à partir histogram
+            #calcul histo
+            f=frame/256
+            f_8=f.astype('uint8')
+            th_otsu,img_binarized=cv2.threshold(f_8, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+            hist = cv2.calcHist([f_8],[0],None,[256],[0,256])
+            
+            plt.title("hist  ")
+            plt.plot(hist)
+            plt.show()
+            
+            hist[0:int(th_otsu)]=0
+            pos_max=np.argmax(hist)
+            seuil_haut=(pos_max*256)
+            #print('pic histo disk :', seuil_haut)
+            #print('pic histo disk seuil :', seuil_haut*0.5)
+            
+            
+            plt.title("flat  "+ str(pos_max))
+            plt.plot(hist)
+            plt.show()
+       
+            """
+            seuil_haut = pic_histo (frame)
+            
+            #seuil_haut_p=np.percentile(frame,97) Obsolete avec histogramme disk
+            #print('percentile :', seuil_haut_p)
+            myseuil=seuil_haut*0.5 # seuillage pour segmentation disque solaire 0.5 - 0.4 pour Ken H
+            #print("myseuil : ", myseuil)
             
             if cfg.LowDyn :
                 #guillaume
@@ -1142,6 +1168,8 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
             ydisk=np.empty(ih+1)
             offset_y1=0
             offset_y2=0
+            
+
             for j in range(0,ih):
                 temp=np.copy(frame[j,:])
                 temp=temp[temp>myseuil]
@@ -1151,14 +1179,17 @@ def solex_proc(serfile,Shift, Flags, ratio_fixe,ang_tilt, poly, data_entete,ang_
                     # manage poor disk intensities inside disk
                     # avoid line artefact
                     if j>=y1 and j<=y2:
+                        ydisk[j]=myseuil
                         if abs(j-y1) < abs(j-y2):
                             offset_y1=offset_y1+1
                         else:
                             offset_y2=offset_y2-1
 
                     else:
-                        ydisk[j]=1
+                        ydisk[j]=myseuil
+            
 
+            
     
         # ne prend que le profil des intensités pour eviter les rebonds de bords
         

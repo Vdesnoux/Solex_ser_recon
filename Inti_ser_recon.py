@@ -8,9 +8,15 @@ Version 20 mai 2021
 Front end de traitements spectro helio de fichier ser
 - interface pour selectionner un ou plusieurs fichiers
 - appel au module inti_recon qui traite la sequence et genere les fichiers fits
-- remplace appel meudon par gong
+
 
 -------------------------------------------------------------------------------
+version 6.2
+- tk error 6.1b
+- histogram pour seuil non uniformity pic max * 0.5
+- bug fix : ligne blanche dans non unif - mettre à 1 etait erreur car non norm
+- creation routine pic_histo(frame) pour eliminer histo des valeurs de fond
+
 Version en cours V6.0b > V6.0c>V6.0d > 6.1 a publier ! 
 - ajout correction bad pixel sur ligne du polynome pour chaque trame > en commentaire 
 - message log datetime sur fichier SER si pb
@@ -311,7 +317,7 @@ import time
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-short_version = 'Inti V6.1'
+short_version = 'Inti V6.2'
 current_version = short_version + ' by V.Desnoux et.al. '
 
 def Colorise_Image (couleur, frame_contrasted, basefich, suff):
@@ -336,10 +342,17 @@ def Colorise_Image (couleur, frame_contrasted, basefich, suff):
     f=frame_contrasted/256
     f_8=f.astype('uint8')
     
-    
-    hist = cv2.calcHist([f_8],[0],None,[256],[10,256])
+    #hist = cv2.calcHist([f_8],[0],None,[256],[10,256])
+    # separe les 2 pics fond et soleil
+    th_otsu,img_binarized=cv2.threshold(f_8, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    hist = cv2.calcHist([f_8],[0],None,[256],[0,256])
+    hist[0:int(th_otsu)]=0
     pos_max=np.argmax(hist)
-    #print(pos_max)
+    """
+    plt.plot(hist)
+    plt.show()
+    print('couleur : ',pos_max)
+    """
     
     # test ombres >> provoque des applats 
     ombres=False
@@ -362,12 +375,6 @@ def Colorise_Image (couleur, frame_contrasted, basefich, suff):
             couleur="Calcium"
         if pos_max>=200 :
             couleur="Pale"
-        """
-        plt.clf()
-        plt.xlim(2,255)
-        plt.plot(hist)
-        plt.show()
-        """
 
     
     # test ombres >> provoque des applats 
@@ -1648,6 +1655,7 @@ screen = tk.Tk()
 scw,sch = screensize = screen.winfo_screenwidth(), screen.winfo_screenheight()
 #dpi=screen.winfo_fpixels('1i')
 #print('screen DPI', dpi)
+screen.update()
 screen.destroy()
 #print('screen size', screensize)
 
