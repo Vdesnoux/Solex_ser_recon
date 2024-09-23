@@ -1,10 +1,12 @@
 opencv_python
 numpy
 astropy
-PySimpleGUI
+FreeSimpleGUI
 lsq-ellipse==2.0.1
 serfilesreader==0.0.6
 PyYAML
 scipy
 requests
+matplotlib
+
 

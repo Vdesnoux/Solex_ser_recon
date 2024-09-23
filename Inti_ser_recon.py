@@ -304,7 +304,7 @@ except ImportError :
     from serfilesreader import Serfile
 import stonyhurst as sth
 
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 try :
     import ctypes
 except:

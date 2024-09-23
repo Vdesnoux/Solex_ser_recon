@@ -58,7 +58,7 @@ La liste des dépendances se trouve dans le fichier requirements.txt
 - opencv_python==4.4.0.46
 - numpy==1.19.2
 - astropy==4.2
-- PySimpleGUI==4.38.0
+- FreeSimpleGUI
 - lsq-ellipse==2.0.1
 - PyYAML==5.4.1
 - serfilesreader==0.0.6
@@ -143,7 +143,7 @@ The list of dependencies can be found in the file requirements.txt
 - opencv_python==4.4.0.46
 - numpy==1.19.2
 - astropy==4.2
-- PySimpleGUI==4.38.0
+- FreeSimpleGUI
 - lsq-ellipse==2.0.1
 
 For an automatic installation type :
