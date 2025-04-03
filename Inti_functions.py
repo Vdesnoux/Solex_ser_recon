@@ -10,20 +10,23 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 #import time
 import sys
-from scipy.ndimage import gaussian_filter1d, rotate, median_filter
-from scipy.signal import savgol_filter
+from scipy.ndimage import gaussian_filter1d
+#from scipy.signal import savgol_filter
 import ellipse as el
 from matplotlib.patches import Ellipse
 import cv2 as cv2
 import astropy.time
 import math
 import config as cfg
+from skimage.segmentation import disk_level_set
+from skimage.util import invert
 #import imutils
 
 
 """
 version du 13 janvier 2024
 - modif autocrop padding a droite
+
 
 version V4.1.2 du 8 juiller 2023
 - ajout detection outlier avec polynome
@@ -109,10 +112,12 @@ def logme(toprint):
 
 def detect_bord (img, axis, offset, flag_disk):
     # ajout d'un flag pour distinguer les images de disk de l'image spectrale moyenne
+    # non utilisé
     
-    #axis donne la direction de detection des bords si 1 vertical, ou 0 horiz
-    #offset: decalage la coordonnée pour prendre en compte le lissage gaussien
+    # axis donne la direction de detection des bords si 1 vertical, ou 0 horiz
+    # offset: decalage la coordonnée pour prendre en compte le lissage gaussien
     debug=False
+    
     # pretraite l'image pour eliminer les zone trop blanche
     img_mean=1.3*np.mean(img) #facteur 1.3 pour eviter des artefacts de bords
     img_c=np.copy(img)
@@ -121,17 +126,22 @@ def detect_bord (img, axis, offset, flag_disk):
     
     #img_c[0,:]=0 # pour meilleure detection bord pour soleil partiel
     #img_c[-1,:]=0
-    
+ 
+
     img_c[0,:]= np.percentile(img,10) # pour meilleure detection bord pour soleil partiel
     img_c[-1,:]=np.percentile(img,10) # pas top, a revoir pour scan avec bcp de diffusé
     
+    if 2==1 : # code 6.2
+        #guillaume
+        if cfg.LowDyn :
+            img_c[0:7,:]=np.percentile(img_c, 25) # valeur du fond noir sur
+            img_c[-7:,:]=np.percentile(img_c, 25) # valeur du fond noir sur
+            #print('LOWDYN percentile 25', np.percentile(img_c, 15))
     
-    #guillaume
-    if cfg.LowDyn :
-        img_c[0:7,:]=np.percentile(img_c, 15) # valeur du fond noir sur
-        img_c[-7:,:]=np.percentile(img_c, 15) # valeur du fond noir sur
-        #print('LOWDYN percentile 15', np.percentile(img_c, 15))
-    
+    if cfg.LowDyn : # calcul noir sur les premieres colonnes et dernieres 7 colonnes
+        img_c[:,0:7]=np.percentile(img_c, 10) # valeur du fond noir sur
+        img_c[:,-7:]=np.percentile(img_c, 10) # valeur du fond noir sur
+        #print('LOWDYN percentile 25', np.percentile(img_c, 15))
     
     # on part de cette image pour la detection haut bas
     ih=img.shape[0]
@@ -190,17 +200,17 @@ def detect_bord (img, axis, offset, flag_disk):
     else:
         # Determination des limites de la projection du soleil sur l'axe X
         # Elimine artefact de bords
-
-        xmean=np.mean(img_c[10:-10,1:],0) #evite si premiere trame du fichier ser est à zero
+        xmean=np.mean(img_c[3:-3,1:],0) #evite si premiere trame du fichier ser est à zero, was 10 jusqu'a V6.2
         if debug:
             plt.title('Profil X ')
             plt.plot(xmean)
             plt.show()
         
         b=np.max(xmean)
-        bb=b*0.5
+        bb=b*0.7 # 0.8 si gaussian à 21, ecrete pour eviter plages trop contrastées mais pas trop si diffusé
         
         if cfg.LowDyn :
+        #if 1==1:
             #guillaume
             #bb=b*0.9 # faible dynamique, ne pas ecréter les plages blanches trop fortement
             bb=b*1
@@ -212,15 +222,14 @@ def detect_bord (img, axis, offset, flag_disk):
             plt.plot(xmean)
             plt.show()
         
-        xmean=gaussian_filter1d(xmean, 11)
+        xmean=gaussian_filter1d(xmean, 11) #was 11 <6.2 then was 21 on 6.2
         xth=np.gradient(xmean)
-  
+        
     
         x1=xth.argmax()-offset+1 # prend en compte decalage de 1 du tableau moyenne
         x2=xth.argmin()+offset+1 # prend en compte decalage de 1 du tableau moyenne
+        
         #test si pas de bord en x
-        #if x1<=11 or x2>iw:
-            
         if x1<=11 or x2>iw:
             x1=0
             x2=iw
@@ -235,6 +244,8 @@ def detect_bord (img, axis, offset, flag_disk):
     return (a1,a2)
 
 def detect_y_of_x (img, x1,x2):
+    # Obsolete - not used anymore
+    
     # trouve les coordonnées y des bords du disque dont on a les x1 et x2 
     # pour avoir les coordonnées y du grand axe horizontal
     # on seuil pour eviter les gradients sues aux protus possibles
@@ -389,7 +400,7 @@ def detect_noXlimbs (myimg):
     TailleX=int(x2-x1)
     iw=myimg.shape[1]
     
-    if TailleX+10<int(iw/5) or TailleX+10>int(iw*.99):
+    if TailleX+10<int(iw/10) or TailleX+10>int(iw*.99):
         logme('Pas de limbe solaire pour déterminer la géometrie')       
         logme('Reprendre les traitements en manuel avec ISIS.')
         flag_nobords=True
@@ -455,16 +466,17 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     # guillaume
     if not cfg.LowDyn :
         # pretraite l'image pour eliminer les zone trop blanche
+        # bug avant 6.3 ajoutait 50 au lieu de le retirer
         # modif du 24 fev pour limiter a 50 pixels de part et d'autre du disque
-        img_mean=1.3*np.mean(myimg[1:-1,milieu-rayon-50:milieu+rayon+50]) #facteur 1.3 pour eviter de clamper trop fort si diffusé
+        img_mean=np.mean(myimg[1:-1,milieu-rayon+50:milieu+rayon-50]) #facteur 1.3 pour eviter de clamper trop fort si diffusé
         img_c=np.copy(myimg)
-        img_c[img_c>img_mean]=img_mean
+        img_c[img_c>1.3*img_mean]=1.3*img_mean
         #print("img mean", img_mean)
     else:
-        # releve seuil moyenne pour eviter clamp trop fort
-        img_mean=3*np.mean(myimg[1:-1,milieu-rayon-50:milieu+rayon+50]) #facteur 1.3 pour eviter des artefacts de bords
+        # releve seuil moyenne pour eviter clamp trop fort, was 3 avant 6.3
+        img_mean=np.mean(myimg[1:-1,milieu-rayon+50:milieu+rayon-50]) #facteur 5 pour eviter des artefacts de bords
         img_c=np.copy(myimg)
-        img_c[img_c>img_mean]=img_mean
+        img_c[img_c>1.3*img_mean]=1.3*img_mean
         #print("img mean", img_mean)
         
     k=0
@@ -489,15 +501,15 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         
         if cfg.LowDyn :
             #guillaume
-            bb=b*0.9 # faible dynamique, ne pas trop clamper
-            #bb=65535
+            #bb=b*0.9 # faible dynamique, ne pas trop clamper
+            bb=65535
          
         
         #bb=b
         #print("seuil edge : ", b," ",bb)
 
         li[li>bb]=bb
-        li=gaussian_filter1d(li, 2)
+        #li=gaussian_filter1d(li, 2) # elimine modif 6.3
         #li[li<4000]=30
         #li_med=median_filter(li,size=50)
         li_filter=gaussian_filter1d(li, 11)
@@ -512,8 +524,11 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         if 2==1 :
             if i in range(y1+ze1+3, y1+ze1+5) :
             #if x1 <2500 :
+                #plt.plot(myli)
+                #plt.title('Profil ligne brute '+str(i))
+                #plt.show()
                 plt.plot(li)
-                plt.title('Profil ligne '+str(i))
+                plt.title('Profil ligne gaussian 11 '+str(i))
                 plt.show()
                 #plt.plot(li_med)
                 #plt.title('Median Profil ligne '+str(i))
@@ -646,6 +661,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
             # filtrage
             kk = 1
             # attention a direction bords droit ou gauche
+          
             for k in range(0,len(fp)-1) :   
                 if i==0 :
                     if (fp[k]) < -clip:
@@ -657,7 +673,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
                         #bords[i][kk]=fit[k]
                     kk=kk+1
                 else:
-                    if (fp[k]) > clip :
+                    if ((fp[k])) > clip :
                         #print("kk ",kk)
                         del bords[i][kk]
                         del bordsY[i][kk]
@@ -680,7 +696,8 @@ def detect_edge (myimg,zexcl, crop, disp_log):
         plt.scatter(a2,b2,s=0.1, marker='.', edgecolors=('yellow'))
         plt.show()
     
-    if not cfg.LowDyn : # echec du fit polynomial en faible dynamique
+
+    if  not cfg.LowDyn : # echec du fit polynomial en faible dynamique
     # guillaume
     #if 1==1 : # echec du fit polynomial en faible dynamique
         polyB=[]
@@ -711,7 +728,7 @@ def detect_edge (myimg,zexcl, crop, disp_log):
     
     X = np.array(list(zip(edgeX, edgeY)), dtype='float')  
    
-   
+    
     if debug :
         plt.imshow(myimg)
         # plot edges on image as red dots
@@ -847,36 +864,36 @@ def auto_crop_img (cam_height, h,w, frame, cercle0, debug_crop, param):
     diam_sol = 2 *cercle0[2]
     
     if crop_force_hauteur != 0 :
-        crop_he = crop_force_hauteur
+        crop_he = int(crop_force_hauteur)
     else :
         #crop_he = ih+100 # pour accomoder angle de tilt
-        crop_he=ih
+        crop_he=int(ih)
     
     # il faut changer les coordonnées du centre de cercle0
     centre_hor=cercle0[0]
     centre_vert=cercle0[1]
     
-    if asym_h <0  or asym_h <= cercle0[2]+20:
-        #print("on ne centre pas en hauteur")
+    if asym_h <0  or asym_h <= cercle0[2]+0: # was 20 sur 6.2
+        print("on ne centre pas en hauteur")
         if crop_force_largeur != 0 :
-            crop_wi = crop_force_largeur
+            crop_wi = int(crop_force_largeur)
             print("autocrop forced")
         else :
             # largeur image multiple de ih
             # version 5.0 etait à 50
             if diam_sol+100 >= 2*ih :
                 print("on prend largeur image a 3*ih", 3*ih)
-                crop_wi = ih*3
+                crop_wi = int(ih*3)
             else  :
                 if diam_sol +100 >=ih :
                     print("on prend largeur image a 2*ih",2*ih)
-                    crop_wi = ih*2
+                    crop_wi = int(ih*2)
                 else :
-                    #print("on garde image carrée")
-                    crop_wi = crop_he
+                    print("on garde image carrée")
+                    crop_wi = int(crop_he)
 
         # translation
-        d_hor = cercle0[0]-crop_wi//2
+        d_hor = int(cercle0[0])-int(crop_wi//2)
         d_vert = 0
         centre_hor = crop_wi//2
         
@@ -1068,26 +1085,184 @@ def pic_histo (frame) :
     f_8=f.astype('uint8')
     th_otsu,img_binarized=cv2.threshold(f_8, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
     hist = cv2.calcHist([f_8],[0],None,[256],[0,256])
+    hist2=np.copy(hist)
     
     if debug :
-        plt.title("hist  ")
+        plt.title("hist th_otsu ="+str(th_otsu))
         plt.plot(hist)
         plt.show()
    
     hist[0:int(th_otsu)]=0
     pos_max=np.argmax(hist)
     seuil_haut=(pos_max*256)
-    #print('pic histo disk :', seuil_haut)
+    #print('seuil haut histo disk :', seuil_haut)
     #print('pic histo disk seuil :', seuil_haut*0.5)
-    
     if debug  :
-        plt.title("flat  "+ str(pos_max))
+        plt.title("Pic haut  "+ str(pos_max))
         plt.plot(hist)
         plt.show()
     
-    return seuil_haut
+    hist2[int(th_otsu):]=0
+    pos_max=np.argmax(hist2)
+    seuil_bas=(pos_max*256)
+    #print('seuil bas histo disk :', seuil_bas)
     
+
     
+    if debug  :
+        plt.title("Pic bas  "+ str(pos_max))
+        plt.plot(hist)
+        plt.show()
+    
+    return seuil_bas, seuil_haut
+
+def corrige_trans_helium (img, R) :
+    # créer le mask à partir du rayon
+    debug =False
+    
+    ih, iw=img.shape
+    # segmentation disque helium
+    mask=disk_level_set(img.shape, radius=float(R))
+
+    chull=np.where(mask==0,False,True)
+    
+    if debug :
+        plt.title("chull")
+        plt.imshow(chull)
+        plt.show()
+
+    img_m=img*chull
+    m = np.ma.masked_equal(img_m, 0)
+    med=np.ma.median(m, 1)
+    med2=med.filled(1)
+    med2=np.array(med2, dtype='uint16')
+    
+    # Génère tableau image de flat 
+    flat=[]
+    flat=np.tile(med2,(iw,1))
+        
+    np_flat=np.asarray(flat)
+    flat = np_flat.T
+    
+    # Evite les divisions par zeros...
+    flat=flat*chull
+    flat[flat==0]=1
+    
+    if debug:
+        plt.title("flat")
+        plt.imshow(flat)
+        plt.show()
+
+    # Divise image par le flat
+    BelleImage=np.divide(img,flat)
+    BelleImage[BelleImage>2]=0 # was 2
+    BelleImage=BelleImage*37267
+    neg_chull=invert(chull)
+    bi=img*neg_chull+BelleImage
+    bi=np.array(bi, dtype='uint16')
+    
+    if debug :
+        plt.imshow(bi)
+        plt.show()
+        
+    #BelleImage[BelleImage>65535]=65535 # bug saturation
+    frame=np.array(bi, dtype='uint16')
+    
+    return frame   
+
+def create_circular_mask(image_shape, center, radius, feather_width):
+    """
+    Create a circular mask with progressive edges (feathering).
+
+    Parameters:
+        image_shape (tuple): Shape of the target image (height, width).
+        center (tuple): Center of the circular mask (x, y).
+        radius (int): Radius of the circular mask.
+        feather_width (int): Width of the feathering at the edges.
+
+    Returns:
+        mask (numpy.ndarray): A 2D mask with values ranging from 0 to 1.
+    """
+    height, width = image_shape
+    y, x = np.ogrid[:height, :width]
+    dist_from_center = np.sqrt((x - center[0]) ** 2 + (y - center[1]) ** 2)
+
+    # Create a mask with feathering
+    mask = np.clip((radius + feather_width - dist_from_center) / feather_width, 0, 1)
+    return mask
+
+def blend_images(cc, result_image, mask):
+    """
+    Blend two images using a circular mask.
+
+    Parameters:
+        cc (numpy.ndarray): The background image.
+        result_image (numpy.ndarray): The foreground image to be masked in the center.
+        mask (numpy.ndarray): The blending mask with values between 0 and 1.
+
+    Returns:
+        blended_image (numpy.ndarray): The final blended image.
+    """
+    # Ensure both images are float64 for blending
+    cc = cc.astype(np.float64)
+    result_image = result_image.astype(np.float64)
+
+    # Blend the images using the mask
+    blended_image = mask * result_image + (1 - mask) * cc
+
+    # Clip values to 16-bit range and convert back to uint16
+    blended_image = np.clip(blended_image, 0, 65535).astype(np.uint16)
+
+    return blended_image
+
+
+# Calcul de la projection m�diane suivant l'axe X (coordonn�e horizontale)
+def calculate_median_projection(image, R):
+    # Dans mon r�f�renciel, imax est la dimension horizontale de l'image (axe x)
+    # C'est aussi la direction du scan
+    jmax, imax = image.shape
+    xc, yc = imax // 2, jmax // 2  # Calcul automatique du centre
+    x_coords, y_coords = np.ogrid[:imax, :jmax]
+    mask = (x_coords - xc)**2 + (y_coords - yc)**2 <= R**2
+    median_projection = np.zeros(jmax)
+    
+    # Pour chaque ligne Y, calculer la m�diane des intensit�s le long de X
+    for y in range(jmax):
+        line_pixels = image[y, mask[y, :]]  # Pixels sur cette ligne, dans le disque
+        if line_pixels.size > 0:
+            median_projection[y] = np.median(line_pixels)
+        else:
+            median_projection[y] = 1  # Evite la division par z�ro
+             
+    return median_projection
+
+# Appliquer la correction
+def apply_transversalium_correction(image, R, median_projection):
+    # Dans mon r�f�renciel, imax est la dimension horizontale de l'image (axe x)
+    # C'est aussi la direction du scan
+    corrected_image = image.astype(np.float64)  # Convertir en r�els pour les calculs
+    jmax, imax = image.shape
+    xc, yc = imax // 2, jmax // 2  # Calcul automatique du centre
+    x_coords, y_coords = np.ogrid[:imax, :jmax]
+    mask = (x_coords - xc)**2 + (y_coords - yc)**2 <= R**2
+
+    # Appliquer la correction pour chaque ligne Y en divisant par la projection m�diane
+    for y in range(jmax):
+        correction_value = median_projection[y]  # Projection m�diane suivant l'axe Y pour chaque ligne X
+        if correction_value > 0:  # Evite la division par z�ro
+            corrected_image[y, mask[y, :]] = corrected_image[y, mask[y, :]] / correction_value
+
+    # Normaliser l'intensit� � 32767 (intensit� mouenne dans l'image de d�part h�lium)
+    normalization_factor = 32767.0
+    corrected_image *= normalization_factor
+        
+    # Mettre � z�ro les pixels en dehors du disque solaire
+    corrected_image[~mask] = 0    
+
+    # Convertir l'image corrig�e en entier 16 bits
+    corrected_image = np.clip(corrected_image, 0, 65535).astype(np.uint16)
+        
+    return corrected_image
     
 
 

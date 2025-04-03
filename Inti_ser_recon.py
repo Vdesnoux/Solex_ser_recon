@@ -11,6 +11,22 @@ Front end de traitements spectro helio de fichier ser
 
 
 -------------------------------------------------------------------------------
+
+version 6.4 paris 8 mars 2025
+- reduit non uniformity wininterp de 301 à 101 pour eviter rebond aux bords
+- remplace valeur à zéro après rotation par un seuil bas issue de l'histogramme
+- ajoute flag et correction transversallium sur image "free", typiquement pour Hélium
+
+version 6.3 paris 30 dec 2024
+- correction inti_function detect_edge seuillage moyenne centre disque depassait le disque
+
+version 6.2a paris 9 sept 2024 - RCE
+- ajout doppler eclipse pour protus
+- met seuil bas a zero pour protus doppler dans seuil_image
+- gere int crop_he pour mac dans autocrop
+- releve de 70 a 98 seuil couleur calcium/H-alpha
+- gerer si pb disk radius zero
+
 version 6.2
 - tk error 6.1b
 - histogram pour seuil non uniformity pic max * 0.5
@@ -289,6 +305,7 @@ import Inti_recon as sol
 from astropy.io import fits
 from Inti_functions import *
 import yaml
+import scipy.ndimage as ndimage
 # import shutil
 
 import tkinter as tk
@@ -296,7 +313,7 @@ import math
 import requests as rq
 import webbrowser as web
 import urllib.request
-from datetime import datetime 
+from datetime import datetime, timezone
 import config as cfg
 try :
     from serfilesreader.serfilesreader import Serfile
@@ -317,8 +334,39 @@ import time
 
 SYMBOL_UP =    '▲'
 SYMBOL_DOWN =  '▼'
-short_version = 'Inti V6.2'
+short_version = 'Inti V6.4'
 current_version = short_version + ' by V.Desnoux et.al. '
+
+def data_path(relative_path):
+    """ Get path to exe, works for dev and for PyInstaller """
+    data_path = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]), relative_path))
+    return data_path
+
+def sharpenImage(image):
+    """
+    Apply multiple sharpening operations to an image.
+
+    Args:
+        image (numpy.ndarray): Input image.
+
+    Returns:
+        numpy.ndarray: Sharpened image.
+    """
+    # Apply Gaussian blur with a 9x9 kernel and sigma of 10.0
+    gaussian_3 = cv2.GaussianBlur(image, (9,9), 10.0)
+    # Sharpen the image by subtracting the blurred image
+    image = cv2.addWeighted(image, 1.5, gaussian_3, -0.5, 0, image)
+
+    # Apply Gaussian blur with a 9x9 kernel and sigma of 8.0
+    gaussian_3 = cv2.GaussianBlur(image, (9,9), 8.0)
+    # Sharpen the image again
+    image = cv2.addWeighted(image, 1.5, gaussian_3, -0.5, 0, image)
+
+    # Apply Gaussian blur with a 3x3 kernel and sigma of 8.0
+    gaussian_3 = cv2.GaussianBlur(image, (3,3), 8.0)
+    # Sharpen the image one more time
+    image = cv2.addWeighted(image, 1.5, gaussian_3, -0.5, 0, image)
+    return image
 
 def Colorise_Image (couleur, frame_contrasted, basefich, suff):
     
@@ -346,13 +394,24 @@ def Colorise_Image (couleur, frame_contrasted, basefich, suff):
     # separe les 2 pics fond et soleil
     th_otsu,img_binarized=cv2.threshold(f_8, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
     hist = cv2.calcHist([f_8],[0],None,[256],[0,256])
-    hist[0:int(th_otsu)]=0
-    pos_max=np.argmax(hist)
+    hist2=np.copy(hist)
+    hist2[0:int(th_otsu)]=0
+    pos_max=np.argmax(hist2)
     """
-    plt.plot(hist)
-    plt.show()
-    print('couleur : ',pos_max)
+    p=np.percentile(hist2,90)
+    print('p: ',p)
+    h3=int(p)
+    hist2[hist2<h3]=0
+    hc=np.argwhere(hist2)
+    e=hc[-1][0]-hc[0][0]
+    print('e: ',hc[0][0],hc[-1][0],e)
     """
+    debug=False
+    if debug :
+        plt.plot(hist2)
+        plt.show()
+        print('couleur : ',pos_max)
+
     
     # test ombres >> provoque des applats 
     ombres=False
@@ -369,9 +428,9 @@ def Colorise_Image (couleur, frame_contrasted, basefich, suff):
     
     
     if couleur =='on' :  
-        if pos_max<200 and pos_max>=70 :
+        if pos_max<200 and pos_max>=98 : #was 70
             couleur="H-alpha"
-        if pos_max<70 :
+        if pos_max<98 :
             couleur="Calcium"
         if pos_max>=200 :
             couleur="Pale"
@@ -567,7 +626,7 @@ def Colorise_Image (couleur, frame_contrasted, basefich, suff):
 
 def seuil_image (img):
     Seuil_haut=np.percentile(img,99.999)
-    Seuil_bas=(Seuil_haut*0.25)
+    Seuil_bas=(Seuil_haut*0) # was 0.25 test dopppler protu
     img[img>Seuil_haut]=Seuil_haut
     img_seuil=(img-Seuil_bas)* (65535/(Seuil_haut-Seuil_bas)) # was 65500
     img_seuil[img_seuil<0]=0
@@ -760,6 +819,15 @@ def display_mean_img (poly):
             except :
                 image_mean_redresse = np.copy(mean_trame)
             
+            # faire un zoom x2
+            a= ndimage.zoom(image_mean_redresse, 4)
+            crop=mih+mih//2
+            a=a[crop:crop+mih,:]
+            #plt.imshow(a)
+            #plt.show()
+            miw=miw*4
+            image_mean_redresse=np.copy(a)
+            
             if miw<178:
                 # window title bar CV2 force image minimal size at 178, so pad to avoid autorescale
 
@@ -768,13 +836,14 @@ def display_mean_img (poly):
                 #mean2_trame_pad=np.array(np.zeros((mih, 178)), dtype="uint16")
                 #mean2_trame_pad[:mih, :miw]=np.copy(mean_trame)
             else:
-                mean_trame_pad=np.array(mean_trame,dtype='uint16')
+                mean_trame_pad=np.array(image_mean_redresse,dtype='uint16')
                 #mean2_trame_pad=np.array(mean_trame,dtype='uint16')
             
             #sauvegarde du fits en _check
             WorkDir=os.path.dirname(ImgFile)+"/"
             base=os.path.basename(ImgFile)
             basefich=os.path.splitext(base)[0].split('_mean')[0]
+            hdu.header['NAXIS1']=miw
             DiskHDU=fits.PrimaryHDU(mean_trame_pad,hdu.header)
             DiskHDU.writeto(WorkDir+basefich+'_check.fits', overwrite='True')
             
@@ -1083,9 +1152,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
              sg.Input(default_text="{:.4e}".format(poly[1]),size=(12,1),key='fb'), sg.Text('* x')],
             [sg.Text('Constante :'),sg.Input(default_text="{:.2f}".format(poly[2]),size=(6,1),key='fc'), sg.Text('Decalage de base:'),sg.Input(default_text=free_shift,size=(5,1),key='-FREE_SHIFT-')],
             [sg.Button("Trame")],
-            #[sg.Button("trame"),sg.Text('Position raie :', visible=False),sg.Input(default_text=0,size=(5,1),background_color='gray',key='xminf', visible=False),
-            #sg.Text('à hauteur y:', visible=False),
-            #sg.Input(default_text=0,size=(5,1),background_color='gray',key='y_xminf', visible=False), sg.Button("Calcul",key="Calculf", visible=False)],
+            [sg.Checkbox('Correction Transversalium', default=Flags["FREE_TRANS"], key='-FREE_TRANS-')],
             [sg.Text('Décalage 1 :'),sg.Input(default_text=pos_free_blue,size=(5,1),key='wb'),sg.Text('Décalage 2 :'),sg.Input(default_text=pos_free_red,size=(5,1),key='wr')],
             [sg.Checkbox(' Force les valeurs tilt et facteur d\'echelle', default=Flags["FORCE_FREE_MAGN"], key='-F_ANG_SXSY2-')],
             [sg.Text('Angle Tilt en degrés :', size=(15,1)), sg.Input(default_text=saved_tilt, size=(6,1),key='-TILT2-'),
@@ -1150,9 +1217,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
              sg.Input(default_text="{:.4e}".format(poly[1]),size=(12,1),key='fb'), sg.Text('* x')],
             [sg.Text('Constante :'),sg.Input(default_text="{:.2f}".format(poly[2]),size=(6,1),key='fc'),sg.Text('Base Shift :'),sg.Input(default_text=free_shift,size=(5,1),key='-FREE_SHIFT-')],
             [sg.Button("Frame")],
-            #[sg.Button("frame"),sg.Text('Position line :',visible=False),sg.Input(default_text=0,size=(5,1),background_color='gray',key='xminf',visible=False),
-            # sg.Text('at height y:',visible=False), sg.Input(default_text=0,size=(5,1),background_color='gray',key='y_xminf',visible=False), 
-            #sg.Button("Calcul", key="Calculf",visible=False)],
+            [sg.Checkbox('Transversalium correction', default=Flags["FREE_TRANS"], key='-FREE_TRANS-')],
             [sg.Text('Shift 1 :'),sg.Input(default_text=pos_free_blue,size=(5,1),key='wb'),sg.Text('Shift 2 :'),sg.Input(default_text=pos_free_red,size=(5,1),key='wr')],
             [sg.Checkbox(' Force values of tilt and scale ratio', default=Flags["FORCE_FREE_MAGN"], key='-F_ANG_SXSY2-')],
             [sg.Text('Tilt angle in degrees :', size=(15,1)), sg.Input(default_text=saved_tilt, size=(6,1),key='-TILT2-'),
@@ -1281,7 +1346,10 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                 #window['xminf'].update(str(mouse_x))
                 #window['y_xminf'].update(str(mouse_y))
                 if mouse_x != 0 :
-                    window['fc'].update(str(mouse_x))
+                    a=mouse_x
+                    a = a//4 #facteur zoom 4 V6.3
+                    decalage =a-float(values['fc'])
+                    window['-FREE_SHIFT-'].update(str(decalage))
                 poly_trame=[]
                 poly_trame.append(float(values['fa']))
                 poly_trame.append(float(values['fb']))
@@ -1334,7 +1402,8 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
                     try:
                         scan = Serfile(serfile, False)
                         #dateSerUTC = scan.getHeader()['DateTimeUTC']
-                        f_dateSerUTC=datetime.utcfromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
+                        #f_dateSerUTC=datetime.utcfromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']))
+                        f_dateSerUTC=datetime.fromtimestamp(SER_time_seconds(scan.getHeader()['DateTimeUTC']),tz=timezone.utc)
                         fits_dateobs=f_dateSerUTC.strftime('%Y-%m-%dT%H:%M:%S.%f7%z')
                         window['-DATEOBS-'].update(fits_dateobs)
                     except:
@@ -1546,6 +1615,7 @@ def UI_SerBrowse (WorkDir,saved_tilt, saved_ratio, dec_pix_dop, dec_pix_cont, po
     Flags["SAVEPOLY"] = values["-SAVEPOLY-"]
     Flags["NOISEREDUC"] = values["-NOISEREDUC-"]    
     Flags["FREE_AUTOPOLY"] = values["-FREE_AUTOPOLY-"]
+    Flags["FREE_TRANS"] = values["-FREE_TRANS-"]
     Flags["ZEE_AUTOPOLY"] = values["-ZEE_AUTOPOLY-"] 
     
    # print(Flags)
@@ -1638,7 +1708,8 @@ Flag_sortie=False
 serfiles=[]
 Flags={}
 previous_serfile=''
-my_ini=os.getcwd()+'/inti.yaml'
+#my_ini=os.getcwd()+'/inti.yaml'
+my_ini=data_path('inti.yaml')
 global mouse_x, mouse_y
 mouse_x,mouse_y=0,0
 global img_data
@@ -1692,7 +1763,7 @@ while not Flag_sortie :
                 'win_posx':300, 'win_posy':200, 'screen_scale':0,'observer':'', 'instru':'','site_long':0, 'site_lat':0,
                 'angle P':0,'contact':'','wavelength':0, 'wave_label':'Manuel', 'inversion NS':0, 'inversion EW':0,
                 'autocrop':1, 'pos fente min':0, 'pos fente max':0,'crop fixe hauteur':0, 'crop fixe largeur':0,
-                "zeeman_shift":0, "reduction bruit":0, 'grid disk':'on', 'lang' :'FR'}
+                "zeeman_shift":0, "reduction bruit":0, 'grid disk':'on', 'lang' :'FR', 'correction He':1}
 
     poly=[]
     
@@ -1724,6 +1795,12 @@ while not Flag_sortie :
     w_posy=int(my_dictini['win_posy'])
     Flags['DOPFLIP']=0
     Flags["SAVEPOLY"]=0
+    
+    if 'correction He' in my_dictini :
+        Flags["FREE_TRANS"]=my_dictini['correction He']
+    else :  
+        Flags["FREE_TRANS"]=1
+        
     if 'inversion EW' in my_dictini:
         Flags['FLIPRA']=my_dictini['inversion EW']
         Flags['FLIPNS']=my_dictini['inversion NS']
@@ -1993,6 +2070,8 @@ while not Flag_sortie :
         my_dictini['ratio_sysx']=ratio_fixe
         my_dictini['win_posx']=w_posx
         my_dictini['win_posy']=w_posy
+        my_dictini['correction He']= Flags['FREE_TRANS']
+        
         if Flags['WEAK']==False and Flags['POL']==False:
             my_dictini['poly_slit_a']=float(polynome[0])
             my_dictini['poly_slit_b']=float(polynome[1])
@@ -2183,6 +2262,10 @@ while not Flag_sortie :
             print("Average Intensity : "+ str(int(lum_roi)))
        
         cv2.imshow('contrast',frame_contrasted)
+        #cce=sharpenImage(frame_contrasted)
+        
+        #plt.imshow(cce)
+        #plt.show()
         
     
         # image raw
@@ -2237,6 +2320,7 @@ while not Flag_sortie :
         # create a CLAHE object (Arguments are optional)
         clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
         cl1 = clahe.apply(frames[0])
+        #cl1=sharpenImage(cl1)
         
         Seuil_bas=np.percentile(cl1, 25)
         Seuil_haut=np.percentile(cl1,99.9999)*1.05
@@ -2244,7 +2328,30 @@ while not Flag_sortie :
             Seuil_haut=65535
         cc=(cl1-Seuil_bas)*(65535/(Seuil_haut-Seuil_bas))
         cc[cc<0]=0
+        cc[cc>65535]=65535
         cc=np.array(cc, dtype='uint16')
+        
+        # create a CLAHE+Edge object (Arguments are optional)
+        clahe = cv2.createCLAHE(clipLimit=0.8, tileGridSize=(2,2))
+        cl1 = clahe.apply(frames[0])
+        
+        """
+        cl1=sharpenImage(cl1)
+        
+        plt.imshow(cl1)
+        plt.show()
+        
+        Seuil_bas=np.percentile(cl1, 25)
+        Seuil_haut=np.percentile(cl1,99.9990)*1
+        if Seuil_haut>65535 :
+            Seuil_haut=65535
+        cce=(cl1-Seuil_bas)*(65535/(Seuil_haut-Seuil_bas))
+        cce[cce<0]=0
+        cce[cce>65535]=65535
+        cce=np.array(cce, dtype='uint16')
+        cce=cv2.flip(cce,0)
+        """
+        
         
         # creation des sliders
         if len(frames)==1 and len(serfiles)==1:
@@ -2306,6 +2413,7 @@ while not Flag_sortie :
                 flag_erreur_doppler=False
                 try :
                     img_doppler=np.zeros([frames[1].shape[0], frames[1].shape[1], 3],dtype='uint16')
+                    img_doppler_ec=np.zeros([frames[1].shape[0], frames[1].shape[1], 3],dtype='uint16')
                     if Flags["VOL"] :
                         f1=np.array(frames[1], dtype="float64")
                         fn=np.array(frames[len(frames)-1], dtype="float64")
@@ -2325,9 +2433,8 @@ while not Flag_sortie :
                     
                         #frames[1]=np.array((moy-f1), dtype='uint16')
                         #frames[2]=np.array((f2-moy), dtype='uint16')
-
-                    
-                    i2,Seuil_haut, Seuil_bas=seuil_image(moy)
+                 
+                    i2,Seuil_haut, Seuil_bas=seuil_image(moy) ## attention modif seuil dans seuil_image pour protus
                     i1=seuil_image_force (frames[1],Seuil_haut, Seuil_bas)
                     i3=seuil_image_force(frames[2],Seuil_haut, Seuil_bas)
                     #i1,Seuil_haut, Seuil_bas=seuil_image(frames[1])
@@ -2342,6 +2449,30 @@ while not Flag_sortie :
                         img_doppler[:,:,2] = i3 # red
                     img_doppler=cv2.flip(img_doppler,0)
                     cv2.imshow('doppler',img_doppler)
+                    
+                    if not Flags["VOL"] :
+                        # ajout d'une image protus doppler
+                        moy=cv2.circle(moy, (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
+                        frames[1]=cv2.circle(frames[1], (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
+                        frames[2]=cv2.circle(frames[2], (x0,y0),r,80,-1,lineType=cv2.LINE_AA)
+                        Th_Upper=np.percentile(moy,99.9999)*0.6  #preference for high contrast was 0.5
+                        Th_low=0
+                        i2=seuil_image_force(moy, Th_Upper, Th_low)
+                        i1=seuil_image_force (frames[1],Th_Upper, Th_low)
+                        i3=seuil_image_force(frames[2],Th_Upper, Th_low)
+                                       
+                        #i1,Seuil_haut, Seuil_bas=seuil_image(frames[1])
+                        #i3,Seuil_haut, Seuil_bas=seuil_image(frames[2])
+                        if Flags['DOPFLIP'] !=0 : 
+                            img_doppler_ec[:,:,0] = i3
+                            img_doppler_ec[:,:,1] = i2
+                            img_doppler_ec[:,:,2] = i1
+                        else :
+                            img_doppler_ec[:,:,0] = i1 # blue
+                            img_doppler_ec[:,:,1] = i2 # green
+                            img_doppler_ec[:,:,2] = i3 # red
+                        img_doppler_ec=cv2.flip(img_doppler_ec,0)
+                        cv2.imshow('protus',img_doppler_ec)
                
                 except:
                     if cfg.LG == 1:
@@ -2355,6 +2486,7 @@ while not Flag_sortie :
                 #sauvegarde en png de doppler
                 if flag_erreur_doppler==False:
                     cv2.imwrite(basefich+'_doppler'+str(abs(range_dec[1]))+'.png',img_doppler)
+                    cv2.imwrite(basefich+'_doppler_protus'+str(abs(range_dec[1]))+'.png',img_doppler_ec)
     
             
             if Flags["POL"] :
@@ -2380,9 +2512,9 @@ while not Flag_sortie :
        
                 
                 flag_erreur_weak=False
+                
                 try :
-                    #moy=(frames[1]+frames[2])/2
-                    #img_weak_array= frames[0]-moy
+                   
                     fr1=np.copy(frames[1])
                     fr2=np.copy(frames[2])
                     fr0=np.copy(frames[0])
@@ -2391,20 +2523,70 @@ while not Flag_sortie :
                     img_diff=np.array(fr2, dtype='float64')-np.array(fr1, dtype='float64')
                     
                     d=(np.array(fr0, dtype='float64')-moy)
-    
+                    
                     
                     offset=-np.min(d)
-                    #img_weak_array_nooff=np.copy(d)
                     print(offset)
                     img_weak_array=d+float(offset+100)
+                    DiskHDU=fits.PrimaryHDU(d,header)
+                    DiskHDU.writeto(basefich+'_test000.fits', overwrite='True')
+                    
                     img_weak_uint=np.array((img_weak_array), dtype='uint16')
-                    #Seuil_bas=int(offset/2)
+                    DiskHDU=fits.PrimaryHDU(img_weak_uint,header)
+                    DiskHDU.writeto(basefich+'_test00.fits', overwrite='True')
+                    
+                    """
+                    if Flags["FREE_TRANS"] :
+                        R=int(cercle[2])
+                        img_weak_uint = corrige_trans_helium(img_weak_uint, R)
+                    """
+                    
+                    #Seuil_bas=int(offset//2)
                     Seuil_bas=0
-                    Seuil_haut=int(np.percentile(img_weak_uint,99.95))
+                    Seuil_haut=int(np.percentile(img_weak_uint,99.99))
+                    
+                    #print("helium seuils : ", Seuil_bas, Seuil_haut)
                     if (Seuil_haut-Seuil_bas) != 0 :
                         img_weak=seuil_image_force(img_weak_uint, Seuil_haut, Seuil_bas)
                     else:
                         img_weak=np.array((img_weak_array), dtype='uint16')
+                    
+                    
+                    DiskHDU=fits.PrimaryHDU(img_weak,header)
+                    DiskHDU.writeto(basefich+'_test0.fits', overwrite='True')
+                    
+                    if Flags["FREE_TRANS"] :
+                        R=int(cercle[2])
+
+                        result_image = corrige_trans_helium(img_weak, R)
+                        DiskHDU=fits.PrimaryHDU(result_image,header)
+                        DiskHDU.writeto(basefich+'_test1.fits', overwrite='True')
+                        
+                        # On ajoute le continuum méthode sunscan
+                        image1 = np.array(result_image, dtype=np.int32) 
+                        image2 = np.array(moy, dtype=np.int32)
+
+                        constant = 32767
+
+                        coef = 0.8 # 0.6 sur sunscan app
+                        image2_transformed = np.where(image2 > 0, image2 - constant, 0)
+                        result_image = image1 + coef * image2_transformed
+                        result_image = np.clip(result_image, 0, 65535).astype(np.uint16)
+                        max_value = np.max(result_image)
+                        result_image = (result_image / max_value) * 65535.0
+                        result_image = result_image.astype(np.uint16)
+                        
+                        # etape supplémentaire de merge avec fond
+                        height, width = img_weak.shape
+                        center = (cercle[0], cercle[1])
+                        feather_width=15
+                        radius=R-feather_width-1
+    
+                        # Create the circular mask
+                        mask = create_circular_mask((height, width), center, radius, feather_width)
+                        # Blend the images
+                        img_weak = blend_images(img_weak, result_image, mask)
+                    #
                     img_weak=np.array(img_weak, dtype='uint16')
                     img_weak=cv2.flip(img_weak,0)
                     cv2.imshow('doppler',img_weak)
@@ -2436,6 +2618,7 @@ while not Flag_sortie :
         
         #sauvegarde en png disk quasi seuils max
         cv2.imwrite(basefich+img_suffix+'_disk.png',frame_contrasted)
+        #cv2.imwrite(basefich+img_suffix+'_disk_sharp.png',cce)
         
         # image contraste inversé
         frame_sub=65535-frame_contrasted
@@ -2445,10 +2628,10 @@ while not Flag_sortie :
         frame_combo=np.maximum(frame_contrasted3, frame_contrasted)
         frame_combo[frame_combo==65535]=0
         cv2.imwrite(basefich+img_suffix+'_mix.png',frame_combo)
-        # image colorisée
+        # image disk colorisée
         couleur = my_dictini['wave_label']
         img_color = Colorise_Image(couleur, frame_contrasted, basefich, img_suffix)
-        
+        #img_color = Colorise_Image(couleur, cce, basefich, img_suffix)
         
         # si pas de flag mode magneto et ou raie libre
         if Flags["POL"] != True  and  Flags["WEAK"] != True : 
@@ -2514,6 +2697,8 @@ while not Flag_sortie :
 
         #sauvegarde en png de clahe
         cv2.imwrite(basefich_clahe+img_suffix+'_clahe.png',cc)
+        #sauvegarde en png de clahe
+        #cv2.imwrite(basefich_clahe+img_suffix+'_clahe_edge.png',cce)
 
 # ------------------------------------------------------------------------------------             
 # sauve les png multispectraux et cree une video

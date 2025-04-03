@@ -1,7 +1,7 @@
 opencv_python
 numpy
 astropy
-PySimpleGUI
+PySimpleGUI==4.60.5
 lsq-ellipse==2.0.1
 serfilesreader==0.0.6
 PyYAML
